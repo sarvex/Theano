@@ -76,9 +76,11 @@ def view_tree_set(v, treeset):
         vmap = getattr(cl.op, 'view_map', {})
         dmap = getattr(cl.op, 'destroy_map', {})
         for opos, iposlist in chain(iteritems(vmap), iteritems(dmap)):
-            if v_input_pos_to_cl in iposlist:
-                if cl.outputs[opos] not in treeset:
-                    view_tree_set(cl.outputs[opos], treeset)
+            if (
+                v_input_pos_to_cl in iposlist
+                and cl.outputs[opos] not in treeset
+            ):
+                view_tree_set(cl.outputs[opos], treeset)
 
 
 def infer_reuse_pattern(fgraph, outputs_to_disown):
@@ -96,7 +98,7 @@ def infer_reuse_pattern(fgraph, outputs_to_disown):
     for o in outputs_to_disown:
         view_tree_set(alias_root(o), rval)
     # remove from rval all of the inputs, constants, values.
-    rval = set(r for r in rval if r.owner is not None)
+    rval = {r for r in rval if r.owner is not None}
 
     return rval
 
@@ -111,14 +113,16 @@ def fgraph_updated_vars(fgraph, expanded_inputs):
     dict variable -> variable
 
     """
-    updated_vars = {}
-    potential_values = list(fgraph.outputs)  # copy the list
     if len(expanded_inputs) != len(fgraph.inputs):
         raise ValueError('expanded_inputs must match len(fgraph.inputs)')
-    for e_input, ivar in reversed(list(zip(expanded_inputs, fgraph.inputs))):
-        if e_input.update is not None:
-            updated_vars[ivar] = potential_values.pop()
-    return updated_vars
+    potential_values = list(fgraph.outputs)  # copy the list
+    return {
+        ivar: potential_values.pop()
+        for e_input, ivar in reversed(
+            list(zip(expanded_inputs, fgraph.inputs))
+        )
+        if e_input.update is not None
+    }
 
 
 class Supervisor:
@@ -181,17 +185,21 @@ def std_fgraph(input_specs, output_specs, accept_inplace=False):
             if not accept_inplace:
                 raise TypeError("Graph must not contain inplace operations",
                                 node, node.op)
-            else:
-                fgraph.attach_feature(gof.DestroyHandler())
-                break
+            fgraph.attach_feature(gof.DestroyHandler())
+            break
 
     # We need to protect all immutable inputs from inplace operations.
     fgraph.attach_feature(
-        Supervisor(input
-                   for spec, input in zip(input_specs, fgraph.inputs)
-                   if not (spec.mutable or
-                           (hasattr(fgraph, 'destroyers') and
-                            fgraph.destroyers(input)))))
+        Supervisor(
+            input
+            for spec, input in zip(input_specs, fgraph.inputs)
+            if not spec.mutable
+            and (
+                not hasattr(fgraph, 'destroyers')
+                or not fgraph.destroyers(input)
+            )
+        )
+    )
 
     # If named nodes are replaced, keep the name
     for feature in std_fgraph.features:
@@ -394,8 +402,7 @@ class Function(object):
         # Initialize the storage
         # this loop works by modifying the elements (as variable c) of
         # self.input_storage inplace.
-        for i, ((input, indices, sinputs), (required, refeed, value)) in \
-                enumerate(zip(self.indices, defaults)):
+        for i, ((input, indices, sinputs), (required, refeed, value)) in enumerate(zip(self.indices, defaults)):
             # this is true iff input is not a SymbolicInputKit
             if indices is None:
                 # containers is being used as a stack. Here we pop off
@@ -422,10 +429,7 @@ class Function(object):
                 c.provided = 0
                 finder[i] = c
                 finder[input.variable] = c
-                if input.name not in finder:
-                    finder[input.name] = c
-                else:
-                    finder[input.name] = DUPLICATE
+                finder[input.name] = c if input.name not in finder else DUPLICATE
                 if input.name is None:
                     n_unnamed_inputs += 1
                 else:
@@ -447,10 +451,7 @@ class Function(object):
                 # can reinitialize all the containers
                 finder[i] = f
                 finder[input] = f
-                if input.name not in finder:
-                    finder[input.name] = f
-                else:
-                    finder[input.name] = DUPLICATE
+                finder[input.name] = f if input.name not in finder else DUPLICATE
                 # For each input in the kit and its corresponding
                 # container, we put an entry in finder.  This allows
                 # the user to micro-manage elements of the kit if need
@@ -459,10 +460,7 @@ class Function(object):
                 for c, sin in zip(cs, sinputs):
                     finder[sin.variable] = c
                     finder[sin.name] = c
-                    if sin.name not in finder:
-                        finder[sin.name] = c
-                    else:
-                        finder[sin.name] = DUPLICATE
+                    finder[sin.name] = c if sin.name not in finder else DUPLICATE
                     inv_finder[c] = input
                     c.required = required
                     c.provided = 0
@@ -471,15 +469,14 @@ class Function(object):
         self.finder = finder
         self.inv_finder = inv_finder
 
-        # this class is important in overriding the square-bracket notation:
-        #     fn.value[x]
-        # self reference is available via the closure on the class
+
+
         class ValueAttribute(object):
             def __getitem__(self, item):
                 try:
                     s = finder[item]
                 except KeyError:
-                    raise TypeError("Unknown input or state: %s" % str(item))
+                    raise TypeError(f"Unknown input or state: {str(item)}")
                 if s is DUPLICATE:
                     raise TypeError("Ambiguous name: %s - please check the "
                                     "names of the inputs of your function "
@@ -495,8 +492,7 @@ class Function(object):
                 except KeyError:
                     # Print informative error message.
                     msg = get_info_on_inputs(named_inputs, n_unnamed_inputs)
-                    raise TypeError("Unknown input or state: %s. %s" %
-                                    (str(item), msg))
+                    raise TypeError(f"Unknown input or state: {str(item)}. {msg}")
                 if s is DUPLICATE:
                     raise TypeError("Ambiguous name: %s - please check the "
                                     "names of the inputs of your function "
@@ -510,9 +506,7 @@ class Function(object):
             def __contains__(self, item):
                 return finder.__contains__(item)
 
-        # this class is important in overriding the square-bracket notation:
-        #     fn.container[x]
-        # self reference is available via the closure on the class
+
         class ContainerAttribute(object):
             def __getitem__(self, item):
                 return finder[item]
@@ -641,8 +635,7 @@ class Function(object):
             # Check if given ShareVariables exist
             for sv in iterkeys(swap):
                 if sv not in exist_svs:
-                    raise ValueError("SharedVariable: %s not found" %
-                                     (sv.name))
+                    raise ValueError(f"SharedVariable: {sv.name} not found")
 
             # Swap SharedVariable in fgraph and In instances
             for index, (i, in_v) in enumerate(zip(ins, fg_cpy.inputs)):
@@ -694,7 +687,7 @@ class Function(object):
                     new_storage_map[memo[key]] = storage_map[key]
 
         if not name and self.name:
-            name = self.name + " copy"
+            name = f"{self.name} copy"
 
         input_storage = [i.value for i in ins]
         # reinitialize new maker and create new function
@@ -702,12 +695,9 @@ class Function(object):
             profile = config.profile
             # profile -> True or False
         if profile is True:
-            if name:
-                message = name
-            else:
-                message = str(maker.profile.message) + " copy"
+            message = name if name else f"{str(maker.profile.message)} copy"
             profile = theano.compile.profiling.ProfileStats(message=message)
-            # profile -> object
+                # profile -> object
         elif type(profile) == str:
             profile = theano.compile.profiling.ProfileStats(message=profile)
 
@@ -755,9 +745,9 @@ class Function(object):
         profile = self.profile
         t0 = time.time()
 
+        i = 0
         # Reinitialize each container's 'provided' counter
         if self.trust_input:
-            i = 0
             for arg in args:
                 s = self.input_storage[i]
                 s.storage[0] = arg
@@ -769,8 +759,6 @@ class Function(object):
             if len(args) + len(kwargs) > len(self.input_storage):
                 raise TypeError("Too many parameter passed to theano function")
 
-            # Set positional arguments
-            i = 0
             for arg in args:
                 # TODO: provide a Param option for skipping the filter if we
                 #      really want speed.
@@ -788,9 +776,13 @@ class Function(object):
                     except Exception as e:
                         function_name = "theano function"
                         if self.name:
-                            function_name += ' with name "' + self.name + '" '
-                        e.args = ("Bad input argument to " + function_name +
-                                  " at index %d(0-based)" % i,) + e.args
+                            function_name += f' with name "{self.name}" '
+                        e.args = (
+                            (
+                                f"Bad input argument to {function_name}"
+                                + " at index %d(0-based)" % i
+                            ),
+                        ) + e.args
                         raise
                 s.provided += 1
                 i += 1
@@ -831,7 +823,7 @@ class Function(object):
                 for group in args_share_memory:
                     if len(group) > 1:
                         # copy all but the first
-                        for idx in group[1:]:
+                        for _ in group[1:]:
                             self.input_storage[i].storage[0] = copy.copy(
                                 self.input_storage[i].storage[0])
 
@@ -858,21 +850,19 @@ class Function(object):
         try:
             outputs = self.fn()
         except Exception:
-            if hasattr(self.fn, 'position_of_error'):
-                # this is a new vm-provided function or c linker
-                # they need this because the exception manipulation
-                # done by raise_with_op is not implemented in C.
-                thunk = None
-                if hasattr(self.fn, 'thunks'):
-                    thunk = self.fn.thunks[self.fn.position_of_error]
-                gof.link.raise_with_op(
-                    node=self.fn.nodes[self.fn.position_of_error],
-                    thunk=thunk,
-                    storage_map=getattr(self.fn, 'storage_map', None))
-            else:
+            if not hasattr(self.fn, 'position_of_error'):
                 # old-style linkers raise their own exceptions
                 raise
 
+            thunk = (
+                self.fn.thunks[self.fn.position_of_error]
+                if hasattr(self.fn, 'thunks')
+                else None
+            )
+            gof.link.raise_with_op(
+                node=self.fn.nodes[self.fn.position_of_error],
+                thunk=thunk,
+                storage_map=getattr(self.fn, 'storage_map', None))
         dt_fn = time.time() - t0_fn
         self.maker.mode.fn_time += dt_fn
         if profile:
@@ -998,23 +988,22 @@ def _pickle_Function(f):
     # HACK to detect aliased storage.
     # This is here because aliased relationships are not [currently]
     # preserved across the pickle operation
-    if not (f.pickle_aliased_memory_strategy == 'ignore'):
+    if f.pickle_aliased_memory_strategy != 'ignore':
         all_data = input_storage + inputs_data
         for i, d_i in enumerate(all_data):
             for j, d_j in enumerate(all_data):
-                if ((i < j) and isinstance(d_i, numpy.ndarray) and
-                        isinstance(d_j, numpy.ndarray)):
-                    if numpy.may_share_memory(d_i, d_j):
-                        if f.pickle_aliased_memory_strategy == 'warn':
-                            _logger.warning('aliased relationship between '
-                                            'Function arguments %s, %s '
-                                            'will not be preserved by '
-                                            'un-pickling operation' %
-                                            (str(d_i), str(d_j)))
-                        else:
-                            raise AliasedMemoryError(d_i, d_j)
-    rval = (_constructor_Function, (f.maker, input_storage, inputs_data))
-    return rval
+                if (
+                    (i < j)
+                    and isinstance(d_i, numpy.ndarray)
+                    and isinstance(d_j, numpy.ndarray)
+                ) and numpy.may_share_memory(d_i, d_j):
+                    if f.pickle_aliased_memory_strategy == 'warn':
+                        _logger.warning(
+                            f'aliased relationship between Function arguments {str(d_i)}, {str(d_j)} will not be preserved by un-pickling operation'
+                        )
+                    else:
+                        raise AliasedMemoryError(d_i, d_j)
+    return _constructor_Function, (f.maker, input_storage, inputs_data)
 
 
 def _constructor_Function(maker, input_storage, inputs_data):
@@ -1104,23 +1093,21 @@ def insert_deepcopy(fgraph, wrapped_inputs, wrapped_outputs):
                             fgraph.change_input('output', i,
                                                 view_op(fgraph.outputs[i]),
                                                 reason="insert_deepcopy")
-                            break
                         else:
                             fgraph.change_input(
                                 'output', i,
                                 deep_copy_op(fgraph.outputs[i]),
                                 reason="insert_deepcopy")
-                            break
                     elif wrapped_outputs[i].borrow:
                         fgraph.change_input('output', i,
                                             view_op(fgraph.outputs[i]),
                                             reason="insert_deepcopy")
-                        break
                     else:
                         fgraph.change_input('output', i,
                                             deep_copy_op(fgraph.outputs[i]),
                                             reason="insert_deepcopy")
-                        break
+
+                    break
 
 NODEFAULT = ['NODEFAULT']
 
@@ -1220,7 +1207,7 @@ class FunctionMaker(object):
             else:
                 # create graph_db
                 with open(graph_db_file, 'wb') as f:
-                    print('create new graph_db in %s' % graph_db_file)
+                    print(f'create new graph_db in {graph_db_file}')
             # load the graph_db dictionary
             try:
                 with open(graph_db_file, 'rb') as f:
@@ -1264,19 +1251,21 @@ class FunctionMaker(object):
                     # two graphs are for sure different
                     print('need to optimize, because output size is different')
                     continue
-                elif not all(input_new.type == input_old.type
-                             for input_new, input_old in
-                             zip(inputs_new, inputs_old)):
+                elif any(
+                    input_new.type != input_old.type
+                    for input_new, input_old in zip(inputs_new, inputs_old)
+                ):
                     print('need to optimize, because inputs are of different '
                           'types')
                     continue
-                elif not all(output_new.type == output_old.type
-                             for output_new, output_old in
-                             zip(outputs_new, outputs_old)):
+                elif any(
+                    output_new.type != output_old.type
+                    for output_new, output_old in zip(outputs_new, outputs_old)
+                ):
                     print('need to optimize, because outputs are of different '
                           'types')
                     continue
-                elif not size_old == size_new:
+                elif size_old != size_new:
                     print('need to optimize, because numbers of nodes in graph'
                           ' are different')
                     continue
@@ -1298,18 +1287,18 @@ class FunctionMaker(object):
                         def removeAllFgraph(remove):
                             if hasattr(remove, 'fgraph'):
                                 del remove.fgraph
-                            if hasattr(remove, 'owner'):
-                                if remove.owner is None:
-                                    pass
-                                else:
-                                    if hasattr(remove.owner, 'fgraph'):
-                                        del remove.owner.fgraph
-                                    if hasattr(remove.owner, 'inputs'):
-                                        remove.owner.inputs = [removeAllFgraph(
-                                            i) for i in remove.owner.inputs]
-                                        for o in remove.owner.outputs:
-                                            if hasattr(o, 'fgraph'):
-                                                del o.fgraph
+                            if (
+                                hasattr(remove, 'owner')
+                                and remove.owner is not None
+                            ):
+                                if hasattr(remove.owner, 'fgraph'):
+                                    del remove.owner.fgraph
+                                if hasattr(remove.owner, 'inputs'):
+                                    remove.owner.inputs = [removeAllFgraph(
+                                        i) for i in remove.owner.inputs]
+                                    for o in remove.owner.outputs:
+                                        if hasattr(o, 'fgraph'):
+                                            del o.fgraph
                             return remove
 
                         t2 = removeAllFgraph(t2)
@@ -1444,7 +1433,7 @@ class FunctionMaker(object):
             try:
                 # optimize the fgraph
                 theano.config.compute_test_value = \
-                    theano.config.compute_test_value_opt
+                        theano.config.compute_test_value_opt
                 theano.config.traceback.limit = 0
                 start_optimizer = time.time()
 
@@ -1476,18 +1465,18 @@ class FunctionMaker(object):
 
         # initialize the linker
         if not hasattr(linker, 'accept'):
-            raise ValueError("'linker' parameter of FunctionMaker should be "
-                             "a Linker with an accept method or one of %s" %
-                             list(theano.compile.mode
-                                  .predefined_linkers.keys()))
+            raise ValueError(
+                f"'linker' parameter of FunctionMaker should be a Linker with an accept method or one of {list(theano.compile.mode.predefined_linkers.keys())}"
+            )
 
         # the 'no_borrow' outputs are the ones for which that we can't
         # return the internal storage pointer.
         assert len(fgraph.outputs) == len(outputs + additional_outputs)
-        no_borrow = [output for output, spec in
-                     zip(fgraph.outputs, outputs + additional_outputs)
-                     if not spec.borrow]
-        if no_borrow:
+        if no_borrow := [
+            output
+            for output, spec in zip(fgraph.outputs, outputs + additional_outputs)
+            if not spec.borrow
+        ]:
             self.linker = linker.accept(
                 fgraph, no_recycling=infer_reuse_pattern(fgraph, no_borrow))
         else:

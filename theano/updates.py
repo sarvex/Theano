@@ -28,10 +28,12 @@ class OrderedUpdates(OrderedDict):
     This mapping supports the use of the "+" operator for the union of updates.
     """
     def __init__(self, *key, **kwargs):
-        if (len(key) >= 1 and
-                isinstance(key[0], dict) and
-                len(key[0]) > 1 and
-                not isinstance(key[0], OrderedDict)):
+        if (
+            key
+            and isinstance(key[0], dict)
+            and len(key[0]) > 1
+            and not isinstance(key[0], OrderedDict)
+        ):
             # Warn when using as input a non-ordered dictionary.
             warnings.warn('Initializing an `OrderedUpdates` from a '
                           'non-ordered dictionary with 2+ elements could '

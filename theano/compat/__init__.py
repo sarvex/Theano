@@ -20,9 +20,7 @@ if PY3:
     # message, we need to unpack arguments recursively.
     def exc_message(e):
         msg = e.args[0]
-        if isinstance(msg, Exception):
-            return exc_message(msg)
-        return msg
+        return exc_message(msg) if isinstance(msg, Exception) else msg
 
     def cmp(x, y):
         """Return -1 if x < y, 0 if x == y, 1 if x > y."""
@@ -32,9 +30,7 @@ if PY3:
         # Op.make_thunk isn't bound, so don't have a __func__ attr.
         # But bound method, have a __func__ method that point to the
         # not bound method. That is what we want.
-        if hasattr(unbound, '__func__'):
-            return unbound.__func__
-        return unbound
+        return unbound.__func__ if hasattr(unbound, '__func__') else unbound
 
     from collections import OrderedDict, MutableMapping as DictMixin
 
@@ -88,10 +84,7 @@ class DefaultOrderedDict(OrderedDict):
         return value
 
     def __reduce__(self):
-        if self.default_factory is None:
-            args = tuple()
-        else:
-            args = self.default_factory,
+        args = tuple() if self.default_factory is None else (self.default_factory, )
         return type(self), args, None, None, list(self.items())
 
     def copy(self):

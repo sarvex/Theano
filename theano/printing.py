@@ -3,6 +3,7 @@
 They all allow different way to print a graph or the result of an Op
 in a graph(Print Op)
 """
+
 from __future__ import print_function
 from copy import copy
 import logging
@@ -38,7 +39,7 @@ except ImportError:
         pass  # tests should not fail on optional dependency
 
 _logger = logging.getLogger("theano.printing")
-VALID_ASSOC = set(['left', 'right', 'either'])
+VALID_ASSOC = {'left', 'right', 'either'}
 
 
 def debugprint(obj, depth=-1, print_type=False,
@@ -97,15 +98,12 @@ def debugprint(obj, depth=-1, print_type=False,
     else:
         _file = file
     if done is None:
-        done = dict()
+        done = {}
     results_to_print = []
     profile_list = []
     order = []  # Toposort
     smap = []  # storage_map
-    if isinstance(obj, (list, tuple, set)):
-        lobj = obj
-    else:
-        lobj = [obj]
+    lobj = obj if isinstance(obj, (list, tuple, set)) else [obj]
     for obj in lobj:
         if isinstance(obj, gof.Variable):
             results_to_print.append(obj)
@@ -114,30 +112,24 @@ def debugprint(obj, depth=-1, print_type=False,
             order.append(None)
         elif isinstance(obj, gof.Apply):
             results_to_print.extend(obj.outputs)
-            profile_list.extend([None for item in obj.outputs])
-            smap.extend([None for item in obj.outputs])
-            order.extend([None for item in obj.outputs])
+            profile_list.extend([None for _ in obj.outputs])
+            smap.extend([None for _ in obj.outputs])
+            order.extend([None for _ in obj.outputs])
         elif isinstance(obj, Function):
             results_to_print.extend(obj.maker.fgraph.outputs)
-            profile_list.extend(
-                [obj.profile for item in obj.maker.fgraph.outputs])
+            profile_list.extend([obj.profile for _ in obj.maker.fgraph.outputs])
             if print_storage:
-                smap.extend(
-                    [obj.fn.storage_map for item in obj.maker.fgraph.outputs])
+                smap.extend([obj.fn.storage_map for _ in obj.maker.fgraph.outputs])
             else:
-                smap.extend(
-                    [None for item in obj.maker.fgraph.outputs])
+                smap.extend([None for _ in obj.maker.fgraph.outputs])
             topo = obj.maker.fgraph.toposort()
-            order.extend(
-                [topo for item in obj.maker.fgraph.outputs])
+            order.extend([topo for _ in obj.maker.fgraph.outputs])
         elif isinstance(obj, gof.FunctionGraph):
             results_to_print.extend(obj.outputs)
-            profile_list.extend([getattr(obj, 'profile', None)
-                                 for item in obj.outputs])
-            smap.extend([getattr(obj, 'storage_map', None)
-                         for item in obj.outputs])
+            profile_list.extend([getattr(obj, 'profile', None) for _ in obj.outputs])
+            smap.extend([getattr(obj, 'storage_map', None) for _ in obj.outputs])
             topo = obj.toposort()
-            order.extend([topo for item in obj.outputs])
+            order.extend([topo for _ in obj.outputs])
         elif isinstance(obj, (integer_types, float, np.ndarray)):
             print(obj)
         elif isinstance(obj, (theano.In, theano.Out)):
@@ -216,9 +208,12 @@ N.B.:
                 outputs = s.owner.op.outputs
             for idx, i in enumerate(outputs):
 
-                if hasattr(i, 'owner') and hasattr(i.owner, 'op'):
-                    if isinstance(i.owner.op, theano.scan_module.scan_op.Scan):
-                        scan_ops.append(i)
+                if (
+                    hasattr(i, 'owner')
+                    and hasattr(i.owner, 'op')
+                    and isinstance(i.owner.op, theano.scan_module.scan_op.Scan)
+                ):
+                    scan_ops.append(i)
 
                 debugmode.debugprint(
                     r=i, prefix=new_prefix,
@@ -240,10 +235,7 @@ N.B.:
 def _print_fn(op, xin):
     for attr in op.attrs:
         temp = getattr(xin, attr)
-        if callable(temp):
-            pmsg = temp()
-        else:
-            pmsg = temp
+        pmsg = temp() if callable(temp) else temp
         print(op.message, attr, '=', pmsg)
 
 
@@ -296,7 +288,7 @@ class Print(Op):
         return output_gradients
 
     def R_op(self, inputs, eval_points):
-        return [x for x in eval_points]
+        return list(eval_points)
 
     def __setstate__(self, dct):
         dct.setdefault('global_fn', _print_fn)
@@ -335,18 +327,9 @@ class OperatorPrinter:
         pprinter = pstate.pprinter
         node = output.owner
         if node is None:
-            raise TypeError("operator %s cannot represent a variable that is "
-                            "not the result of an operation" % self.operator)
-
-        # Precedence seems to be buggy, see #249
-        # So, in doubt, we parenthesize everything.
-        # outer_precedence = getattr(pstate, 'precedence', -999999)
-        # outer_assoc = getattr(pstate, 'assoc', 'none')
-        # if outer_precedence > self.precedence:
-        #    parenthesize = True
-        # else:
-        #    parenthesize = False
-        parenthesize = True
+            raise TypeError(
+                f"operator {self.operator} cannot represent a variable that is not the result of an operation"
+            )
 
         input_strings = []
         max_i = len(node.inputs) - 1
@@ -362,11 +345,9 @@ class OperatorPrinter:
         if len(input_strings) == 1:
             s = self.operator + input_strings[0]
         else:
-            s = (" %s " % self.operator).join(input_strings)
-        if parenthesize:
-            return "(%s)" % s
-        else:
-            return s
+            s = f" {self.operator} ".join(input_strings)
+        parenthesize = True
+        return f"({s})" if parenthesize else s
 
 
 class PatternPrinter:
@@ -392,10 +373,13 @@ class PatternPrinter:
         def pp_process(input, precedence):
             return pprinter.process(input, pstate.clone(precedence=precedence))
 
-        d = dict((str(i), x)
-                 for i, x in enumerate(pp_process(input, precedence)
-                                       for input, precedence in
-                                       zip(node.inputs, precedences)))
+        d = {
+            str(i): x
+            for i, x in enumerate(
+                pp_process(input, precedence)
+                for input, precedence in zip(node.inputs, precedences)
+            )
+        }
         return pattern % d
 
 
@@ -445,7 +429,7 @@ class IgnorePrinter:
             raise TypeError("function %s cannot represent a variable that is"
                             " not the result of an operation" % self.function)
         input = node.inputs[0]
-        return "%s" % pprinter.process(input, pstate)
+        return f"{pprinter.process(input, pstate)}"
 
 
 class DefaultPrinter:
@@ -454,10 +438,10 @@ class DefaultPrinter:
         pass
 
     def process(self, r, pstate):
-        pprinter = pstate.pprinter
         node = r.owner
         if node is None:
             return LeafPrinter().process(r, pstate)
+        pprinter = pstate.pprinter
         return "%s(%s)" % (str(node.op), ", ".join(
             [pprinter.process(input, pstate.clone(precedence=-1000))
              for input in node.inputs]))
@@ -465,10 +449,7 @@ class DefaultPrinter:
 
 class LeafPrinter:
     def process(self, r, pstate):
-        if r.name in greek:
-            return greek[r.name]
-        else:
-            return str(r)
+        return greek[r.name] if r.name in greek else str(r)
 
 
 class PPrinter:
@@ -517,7 +498,7 @@ class PPrinter:
             strings = []
         pprinter = self.clone_assign(lambda pstate, r: r.name is not None and
                                      r is not current, LeafPrinter())
-        inv_updates = dict((b, a) for (a, b) in iteritems(updates))
+        inv_updates = {b: a for (a, b) in iteritems(updates)}
         i = 1
         for node in gof.graph.io_toposort(list(inputs) + updates.keys(),
                                           list(outputs) +
@@ -525,8 +506,7 @@ class PPrinter:
             for output in node.outputs:
                 if output in inv_updates:
                     name = str(inv_updates[output])
-                    strings.append((i + 1000, "%s <- %s" % (
-                        name, pprinter.process(output))))
+                    strings.append((i + 1000, f"{name} <- {pprinter.process(output)}"))
                     i += 1
                 if output.name is not None or output in outputs:
                     if output.name is None:
@@ -542,11 +522,9 @@ class PPrinter:
                     except ValueError:
                         idx = i
                     if len(outputs) == 1 and outputs[0] is output:
-                        strings.append((idx, "return %s" %
-                                        pprinter.process(output)))
+                        strings.append((idx, f"return {pprinter.process(output)}"))
                     else:
-                        strings.append((idx, "%s = %s" %
-                                        (name, pprinter.process(output))))
+                        strings.append((idx, f"{name} = {pprinter.process(output)}"))
                     i += 1
         strings.sort()
         return "\n".join(s[1] for s in strings)

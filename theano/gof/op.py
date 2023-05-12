@@ -287,7 +287,7 @@ class CLinkerOp(CLinkerObject):
             The subclass does not override this method.
 
         """
-        raise utils.MethodNotDefined('%s.c_code' % self.__class__.__name__)
+        raise utils.MethodNotDefined(f'{self.__class__.__name__}.c_code')
 
     def c_code_cache_version_apply(self, node):
         """
@@ -348,8 +348,7 @@ class CLinkerOp(CLinkerObject):
             The subclass does not override this method.
 
         """
-        raise utils.MethodNotDefined('%s.c_code_cleanup' %
-                                     self.__class__.__name__)
+        raise utils.MethodNotDefined(f'{self.__class__.__name__}.c_code_cleanup')
 
     def c_support_code_apply(self, node, name):
         """
@@ -553,7 +552,7 @@ class PureOp(object):
                     "For compute_test_value, one input test value does not"
                     " have the requested type.\n")
                 tr = getattr(v.tag, 'trace', [])
-                if isinstance(tr, list) and len(tr) > 0:
+                if isinstance(tr, list) and tr:
                     detailed_err_msg += (
                         " \nBacktrace when that variable is created:\n")
                     # Print separate message for each element in the list
@@ -574,7 +573,7 @@ class PureOp(object):
                 raise
             return ret
 
-        raise AttributeError('%s has no test value' % v)
+        raise AttributeError(f'{v} has no test value')
 
     def __call__(self, *inputs, **kwargs):
         """
@@ -639,43 +638,8 @@ class PureOp(object):
                         pdb.post_mortem(sys.exc_info()[2])
                     else:
                         raise ValueError(
-                            '%s is invalid for option config.compute_Test_value' %
-                            config.compute_test_value)
-
-            # if all inputs have test-values, run the actual op
-            if run_perform:
-                # Original values should not be destroyed:
-                # copy the values of the inputs in destroy_map
-                destroyed_inputs_idx = set()
-                if getattr(node.op, 'destroy_map', None):
-                    for i_pos_list in itervalues(node.op.destroy_map):
-                        destroyed_inputs_idx.update(i_pos_list)
-                for inp_idx in destroyed_inputs_idx:
-                    inp = node.inputs[inp_idx]
-                    storage_map[inp] = [storage_map[inp][0].copy()]
-
-                # Prepare storage_map and compute_map for the outputs
-                for o in node.outputs:
-                    storage_map[o] = [None]
-                    compute_map[o] = [False]
-
-                # compute output value once with test inputs to validate graph
-                thunk = node.op.make_thunk(node, storage_map, compute_map,
-                                           no_recycling=[])
-                thunk.inputs = [storage_map[v] for v in node.inputs]
-                thunk.outputs = [storage_map[v] for v in node.outputs]
-
-                required = thunk()
-                assert not required  # We provided all inputs
-
-                for output in node.outputs:
-                    # Check that the output has been computed
-                    assert compute_map[output][
-                        0], (output, storage_map[output][0])
-
-                    # add 'test_value' to output tag, so that downstream ops can use these
-                    # numerical values as inputs to their perform method.
-                    output.tag.test_value = storage_map[output][0]
+                            f'{config.compute_test_value} is invalid for option config.compute_Test_value'
+                        )
 
         if self.default_output is not None:
             rval = node.outputs[self.default_output]
@@ -818,16 +782,15 @@ class Op(utils.object2, PureOp, CLinkerOp):
             return super(Op, self).__hash__()
 
     def __str__(self):
-        if hasattr(self, '__props__'):
-            if len(self.__props__) == 0:
-                return "%s" % (self.__class__.__name__,)
-            else:
-                return "%s{%s}" % (
-                    self.__class__.__name__,
-                    ", ".join("%s=%r" % (p, getattr(self, p))
-                              for p in self.__props__))
-        else:
+        if not hasattr(self, '__props__'):
             return super(Op, self).__str__()
+        if len(self.__props__) == 0:
+            return f"{self.__class__.__name__}"
+        else:
+            return "%s{%s}" % (
+                self.__class__.__name__,
+                ", ".join("%s=%r" % (p, getattr(self, p))
+                          for p in self.__props__))
 
     def __eq__(self, other):
         if hasattr(self, '__props__'):
@@ -899,11 +862,7 @@ class Op(utils.object2, PureOp, CLinkerOp):
         node_input_storage = [storage_map[r] for r in node.inputs]
         node_output_storage = [storage_map[r] for r in node.outputs]
 
-        if debug:
-            p = node.op.debug_perform
-        else:
-            p = node.op.perform
-
+        p = node.op.debug_perform if debug else node.op.perform
         params = node.run_params()
 
         if params is graph.NoParams:
@@ -987,10 +946,10 @@ class Op(utils.object2, PureOp, CLinkerOp):
         if len(inputs) != len(self.itypes):
             raise ValueError("We expected %d inputs but got %d." %
                              (len(self.itypes), len(inputs)))
-        if not all(inp.type == it for inp, it in zip(inputs, self.itypes)):
+        if any(inp.type != it for inp, it in zip(inputs, self.itypes)):
             raise TypeError(
-                "We expected inputs of types '%s' but got types '%s' " %
-                (str([inp.type for inp in inputs]), str(self.itypes)))
+                f"We expected inputs of types '{[inp.type for inp in inputs]}' but got types '{str(self.itypes)}' "
+            )
         return theano.Apply(self, inputs, [o() for o in self.otypes])
 
 
@@ -1053,9 +1012,8 @@ def debug_error_message(msg):
 
     if action in ['raise', 'ignore']:
         raise ValueError(msg)
-    else:
-        assert action == 'warn'
-        warnings.warn(msg, stacklevel=2)
+    assert action == 'warn'
+    warnings.warn(msg, stacklevel=2)
 
 
 def debug_assert(condition, msg=None):
@@ -1065,9 +1023,8 @@ def debug_assert(condition, msg=None):
         action = config.compute_test_value
         if action in ['raise', 'ignore']:
             raise AssertionError(msg)
-        else:
-            assert action == 'warn'
-            warnings.warn(msg, stacklevel=2)
+        assert action == 'warn'
+        warnings.warn(msg, stacklevel=2)
 
 
 def get_debug_values(*args):
@@ -1105,17 +1062,12 @@ def get_debug_values(*args):
             rval.append(get_test_value(arg))
         except AttributeError:
             if hasattr(arg, 'name') and arg.name is not None:
-                missing_test_message("Argument " + str(i) + "('" + arg.name +
-                                     "') has no test value")
+                missing_test_message(f"Argument {str(i)}('{arg.name}') has no test value")
             else:
-                missing_test_message("Argument " + str(i) +
-                                     " has no test value")
+                missing_test_message(f"Argument {str(i)} has no test value")
             return []
 
-    if len(rval) == 1:
-        return rval
-
-    return [tuple(rval)]
+    return rval if len(rval) == 1 else [tuple(rval)]
 
 
 ops_with_inner_function = {}
@@ -1167,15 +1119,11 @@ class OpenMPOp(Op):
 
     def c_compile_args(self):
         self.update_self_openmp()
-        if self.openmp:
-            return ['-fopenmp']
-        return []
+        return ['-fopenmp'] if self.openmp else []
 
     def c_headers(self):
         self.update_self_openmp()
-        if self.openmp:
-            return ["omp.h"]
-        return []
+        return ["omp.h"] if self.openmp else []
 
     @staticmethod
     def test_gxx_support():
@@ -1190,12 +1138,12 @@ int main( int argc, const char* argv[] )
         }
 }
         """
-        default_openmp = GCC_compiler.try_compile_tmp(
+        return GCC_compiler.try_compile_tmp(
             src_code=code,
             tmp_prefix='test_omp_',
             flags=['-fopenmp'],
-            try_run=False)
-        return default_openmp
+            try_run=False,
+        )
 
     def update_self_openmp(self):
         """
@@ -1229,9 +1177,9 @@ def simple_meth(tag):
         if tag in self.code_sections:
             return self.code_sections[tag]
         else:
-            raise utils.MethodNotDefined(
-                'c_' + tag, type(self), type(self).__name__)
-    f.__name__ = 'c_' + tag
+            raise utils.MethodNotDefined(f'c_{tag}', type(self), type(self).__name__)
+
+    f.__name__ = f'c_{tag}'
     return f
 
 
@@ -1244,9 +1192,9 @@ def apply_meth(tag):
             return os.linesep.join(['', define_macros, code,
                                     undef_macros])
         else:
-            raise utils.MethodNotDefined(
-                'c_' + tag, type(self), type(self).__name__)
-    f.__name__ = 'c_' + tag
+            raise utils.MethodNotDefined(f'c_{tag}', type(self), type(self).__name__)
+
+    f.__name__ = f'c_{tag}'
     return f
 
 
@@ -1319,10 +1267,8 @@ class COp(Op):
             with open(func_file, 'r') as f:
                 self.func_codes.append(f.read())
 
-        # If both the old section markers and the new section markers are
-        # present, raise an error because we don't know which ones to follow.
-        old_markers_present = False
         new_markers_present = False
+        old_markers_present = False
         for code in self.func_codes:
             if self.backward_re.search(code):
                 old_markers_present = True
@@ -1335,20 +1281,18 @@ class COp(Op):
                              'provided C code. These two syntaxes should not '
                              'be used at the same time.')
 
-        self.code_sections = dict()
+        self.code_sections = {}
         for i, code in enumerate(self.func_codes):
             if self.backward_re.search(code):
                 # This is backward compat code that will go away in a while
 
                 # Separate the code into the proper sections
                 split = self.backward_re.split(code)
-                n = 1
-                while n < len(split):
+                for n in range(1, len(split), 2):
                     if split[n] == 'APPLY':
                         self.code_sections['support_code_apply'] = split[n + 1]
                     elif split[n] == 'SUPPORT':
                         self.code_sections['support_code'] = split[n + 1]
-                    n += 2
                 continue
 
             elif self.section_re.search(code):
@@ -1356,25 +1300,26 @@ class COp(Op):
                 # Check for code outside of the supported sections
                 split = self.section_re.split(code)
                 if split[0].strip() != '':
-                    raise ValueError('Stray code before first #section '
-                                     'statement (in file %s): %s' %
-                                     (self.func_files[i], split[0]))
+                    raise ValueError(
+                        f'Stray code before first #section statement (in file {self.func_files[i]}): {split[0]}'
+                    )
 
                 # Separate the code into the proper sections
                 n = 1
                 while n < len(split):
                     if split[n] not in self.SECTIONS:
                         raise ValueError(
-                            "Unknown section type (in file %s): %s" %
-                            (self.func_files[i], split[n]))
+                            f"Unknown section type (in file {self.func_files[i]}): {split[n]}"
+                        )
                     if split[n] not in self.code_sections:
                         self.code_sections[split[n]] = ""
                     self.code_sections[split[n]] += split[n + 1]
                     n += 2
 
             else:
-                raise ValueError("No valid section marker was found in file "
-                                 "%s" % self.func_files[i])
+                raise ValueError(
+                    f"No valid section marker was found in file {self.func_files[i]}"
+                )
 
     def get_op_params(self):
         """
@@ -1408,7 +1353,7 @@ class COp(Op):
         # Generate an string containing the arguments sent to the external C
         # function. The argstring will be of format :
         # "input0, input1, input2, &output0, &output1"
-        return ", ".join(list(inp) + ["&%s" % o for o in out])
+        return ", ".join(list(inp) + [f"&{o}" for o in out])
 
     def get_c_macros(self, node, name, check_input=None):
         define_template = "#define %s %s"
@@ -1431,8 +1376,8 @@ class COp(Op):
                     continue
                 vname = variable_names[i]
 
-                macro_name = "DTYPE_" + vname
-                macro_value = "npy_" + v.dtype
+                macro_name = f"DTYPE_{vname}"
+                macro_value = f"npy_{v.dtype}"
 
                 define_macros.append(
                     define_template %
@@ -1441,7 +1386,7 @@ class COp(Op):
 
                 d = numpy.dtype(v.dtype)
 
-                macro_name = "TYPENUM_" + vname
+                macro_name = f"TYPENUM_{vname}"
                 macro_value = d.num
 
                 define_macros.append(
@@ -1449,7 +1394,7 @@ class COp(Op):
                     (macro_name, macro_value))
                 undef_macros.append(undef_template % macro_name)
 
-                macro_name = "ITEMSIZE_" + vname
+                macro_name = f"ITEMSIZE_{vname}"
                 macro_value = d.itemsize
 
                 define_macros.append(
@@ -1458,8 +1403,9 @@ class COp(Op):
                 undef_macros.append(undef_template % macro_name)
 
         # Generate a macro to mark code as being apply-specific
-        define_macros.append(define_template % ("APPLY_SPECIFIC(str)",
-                                                "str##_%s" % name))
+        define_macros.append(
+            (define_template % ("APPLY_SPECIFIC(str)", f"str##_{name}"))
+        )
         undef_macros.append(undef_template % "APPLY_SPECIFIC")
 
         for n, v in self.get_op_params():
@@ -1469,21 +1415,16 @@ class COp(Op):
         return os.linesep.join(define_macros), os.linesep.join(undef_macros)
 
     def _lquote_macro(self, txt):
-        res = []
         spl = txt.split('\n')
-        for l in spl[:-1]:
-            res.append(l + ' \\')
+        res = [l + ' \\' for l in spl[:-1]]
         res.append(spl[-1])
         return os.linesep.join(res)
 
     def get_sub_macros(self, sub):
-        define_macros = []
-        undef_macros = []
-        define_macros.append("#define FAIL %s" % (
-                             self._lquote_macro(sub['fail']),))
-        undef_macros.append("#undef FAIL")
+        define_macros = [f"#define FAIL {self._lquote_macro(sub['fail'])}"]
+        undef_macros = ["#undef FAIL"]
         if 'params' in sub:
-            define_macros.append("#define PARAMS %s" % (sub['params'],))
+            define_macros.append(f"#define PARAMS {sub['params']}")
             undef_macros.append("#undef PARAMS")
 
         return os.linesep.join(define_macros), os.linesep.join(undef_macros)
@@ -1521,10 +1462,7 @@ class COp(Op):
             define_macros, undef_macros = self.get_c_macros(node, name,
                                                             check_input=False)
 
-            params = ""
-            if 'params' in sub:
-                params = ", %s" % (sub['params'],)
-
+            params = f", {sub['params']}" if 'params' in sub else ""
             # Generate the C code
             return """
                 %(define_macros)s

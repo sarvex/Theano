@@ -57,10 +57,7 @@ if __name__ == '__main__':
 
     def call_sphinx(builder, workdir):
         import sphinx
-        if options['--check']:
-            extraopts = ['-W']
-        else:
-            extraopts = []
+        extraopts = ['-W'] if options['--check'] else []
         if not options['--cache'] and files is None:
             extraopts.append('-E')
         docpath = os.path.join(throot, 'doc')

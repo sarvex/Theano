@@ -97,7 +97,7 @@ class DeviceParam(ConfigParam):
         super(DeviceParam, self).__init__(default, filter, over)
 
     def __str__(self):
-        return '%s (%s, gpu*, opencl*, cuda*) ' % (self.fullname, self.default)
+        return f'{self.fullname} ({self.default}, gpu*, opencl*, cuda*) '
 
 AddConfigVar(
     'device',
@@ -132,11 +132,12 @@ class ContextsParam(ConfigParam):
             for v in val.split(';'):
                 s = v.split('->')
                 if len(s) != 2:
-                    raise ValueError("Malformed context map: %s" % (v,))
+                    raise ValueError(f"Malformed context map: {v}")
                 if (s[0] == 'cpu' or s[0].startswith('cuda') or
                         s[0].startswith('opencl')):
-                    raise ValueError("Cannot use %s as context name" % (s[0],))
+                    raise ValueError(f"Cannot use {s[0]} as context name")
             return val
+
         ConfigParam.__init__(self, '', filter, False)
 
 AddConfigVar(
@@ -166,16 +167,19 @@ AddConfigVar(
 
 
 def default_cuda_root():
-    v = os.getenv('CUDA_ROOT', "")
-    if v:
+    if v := os.getenv('CUDA_ROOT', ""):
         return v
-    s = os.getenv("PATH")
-    if not s:
+    if s := os.getenv("PATH"):
+        return next(
+            (
+                os.path.dirname(os.path.abspath(dir))
+                for dir in s.split(os.path.pathsep)
+                if os.path.exists(os.path.join(dir, "nvcc"))
+            ),
+            '',
+        )
+    else:
         return ''
-    for dir in s.split(os.path.pathsep):
-        if os.path.exists(os.path.join(dir, "nvcc")):
-            return os.path.dirname(os.path.abspath(dir))
-    return ''
 
 AddConfigVar(
     'cuda.root',
@@ -194,7 +198,7 @@ AddConfigVar(
 def filter_nvcc_flags(s):
     assert isinstance(s, str)
     flags = [flag for flag in s.split(' ') if flag]
-    if any([f for f in flags if not f.startswith("-")]):
+    if any(f for f in flags if not f.startswith("-")):
         raise ValueError(
             "Theano nvcc.flags support only parameter/value pairs without"
             " space between them. e.g.: '--machine 64' is not supported,"
@@ -639,9 +643,7 @@ def warn_default(version):
         return True
     if config.warn.ignore_bug_before == 'all':
         return False
-    if config.warn.ignore_bug_before >= version:
-        return False
-    return True
+    return config.warn.ignore_bug_before < version
 
 
 AddConfigVar('warn.argmax_pushdown_bug',
@@ -789,16 +791,15 @@ AddConfigVar(
     EnumStr('low', 'high'),
     in_c_key=False)
 
-# Test if the env variable is set
-var = os.getenv('OMP_NUM_THREADS', None)
-if var:
+if var := os.getenv('OMP_NUM_THREADS', None):
     try:
         int(var)
     except ValueError:
-        raise TypeError("The environment variable OMP_NUM_THREADS"
-                        " should be a number, got '%s'." % var)
+        raise TypeError(
+            f"The environment variable OMP_NUM_THREADS should be a number, got '{var}'."
+        )
     else:
-        default_openmp = not int(var) == 1
+        default_openmp = int(var) != 1
 else:
     # Check the number of cores availables.
     count = cpuCount()
@@ -971,10 +972,7 @@ def is_valid_check_preallocated_output_param(param):
         return False
     valid = ["initial", "previous", "c_contiguous", "f_contiguous",
              "strided", "wrong_size", "ALL", ""]
-    for p in param.split(":"):
-        if p not in valid:
-            return False
-    return True
+    return all(p in valid for p in param.split(":"))
 
 AddConfigVar('DebugMode.check_preallocated_output',
              ('Test thunks with pre-allocated memory as output storage. '
@@ -1119,12 +1117,12 @@ def default_blas_ldflags():
             use_unix_epd = True
             if sys.platform == 'win32':
                 return ' '.join(
-                    ['-L%s' % os.path.join(sys.prefix, "Scripts")] +
-                    # Why on Windows, the library used are not the
-                    # same as what is in
-                    # blas_info['libraries']?
-                    ['-l%s' % l for l in ["mk2_core", "mk2_intel_thread",
-                                          "mk2_rt"]])
+                    [f'-L{os.path.join(sys.prefix, "Scripts")}']
+                    + [
+                        f'-l{l}'
+                        for l in ["mk2_core", "mk2_intel_thread", "mk2_rt"]
+                    ]
+                )
             elif sys.platform == 'darwin':
                 # The env variable is needed to link with mkl
                 new_path = os.path.join(sys.prefix, "lib")
@@ -1141,25 +1139,19 @@ def default_blas_ldflags():
                 # So we warn the user and tell him what todo.
                 if v is None or new_path not in v.split(":"):
                     _logger.warning(
-                        "The environment variable "
-                        "'DYLD_FALLBACK_LIBRARY_PATH' does not contain "
-                        "the '%s' path in its value. This will make "
-                        "Theano use a slow version of BLAS. Update "
-                        "'DYLD_FALLBACK_LIBRARY_PATH' to contain the "
-                        "said value, this will disable this warning."
-                        % new_path)
+                        f"The environment variable 'DYLD_FALLBACK_LIBRARY_PATH' does not contain the '{new_path}' path in its value. This will make Theano use a slow version of BLAS. Update 'DYLD_FALLBACK_LIBRARY_PATH' to contain the said value, this will disable this warning."
+                    )
 
                     use_unix_epd = False
             if use_unix_epd:
                 return ' '.join(
-                    ['-L%s' % os.path.join(sys.prefix, "lib")] +
-                    ['-l%s' % l for l in blas_info['libraries']])
+                    [f'-L{os.path.join(sys.prefix, "lib")}']
+                    + [f'-l{l}' for l in blas_info['libraries']]
+                )
 
-                # Canopy
+                            # Canopy
         if "Canopy" in sys.prefix:
-            subsub = 'lib'
-            if sys.platform == 'win32':
-                subsub = 'Scripts'
+            subsub = 'Scripts' if sys.platform == 'win32' else 'lib'
             lib_path = os.path.join(sys.base_prefix, subsub)
             if not os.path.exists(lib_path):
                 # Old logic to find the path. I don't think we still
@@ -1183,17 +1175,16 @@ def default_blas_ldflags():
                 lib_path = os.path.join(p, lib_paths[0], subsub)
                 assert os.path.exists(lib_path), "Canopy changed the location of MKL"
 
-            if sys.platform == "linux2" or sys.platform == "darwin":
-                return ' '.join(
-                    ['-L%s' % lib_path] +
-                    ['-l%s' % l for l in blas_info['libraries']])
+            if sys.platform in ["linux2", "darwin"]:
+                return ' '.join([f'-L{lib_path}'] + [f'-l{l}' for l in blas_info['libraries']])
             elif sys.platform == 'win32':
                 return ' '.join(
-                    ['-L%s' % lib_path] +
-                    # Why on Windows, the library used are not the
-                    # same as what is in blas_info['libraries']?
-                    ['-l%s' % l for l in ["mk2_core", "mk2_intel_thread",
-                                          "mk2_rt"]])
+                    [f'-L{lib_path}']
+                    + [
+                        f'-l{l}'
+                        for l in ["mk2_core", "mk2_intel_thread", "mk2_rt"]
+                    ]
+                )
 
         # Anaconda
         if "Anaconda" in sys.version and sys.platform == "win32":
@@ -1210,37 +1201,32 @@ def default_blas_ldflags():
             else:
                 # This branch is executed if no exception was raised
                 lib_path = os.path.join(sys.prefix, 'DLLs')
-                flags = ['-L%s' % lib_path]
-                flags += ['-l%s' % l for l in ["mkl_core",
-                                               "mkl_intel_thread",
-                                               "mkl_rt"]]
-                res = try_blas_flag(flags)
-                if res:
+                flags = [f'-L{lib_path}']
+                flags += [
+                    f'-l{l}'
+                    for l in ["mkl_core", "mkl_intel_thread", "mkl_rt"]
+                ]
+                if res := try_blas_flag(flags):
                     return res
 
         ret = (
-            # TODO: the Gemm op below should separate the
-            # -L and -l arguments into the two callbacks
-            # that CLinker uses for that stuff.  for now,
-            # we just pass the whole ldflags as the -l
-            # options part.
-            ['-L%s' % l for l in blas_info.get('library_dirs', [])] +
-            ['-l%s' % l for l in blas_info.get('libraries', [])] +
-            blas_info.get('extra_link_args', []))
+            [f'-L{l}' for l in blas_info.get('library_dirs', [])]
+            + [f'-l{l}' for l in blas_info.get('libraries', [])]
+            + blas_info.get('extra_link_args', [])
+        )
         # For some very strange reason, we need to specify -lm twice
         # to get mkl to link correctly.  I have no idea why.
         if any('mkl' in fl for fl in ret):
             ret.extend(['-lm', '-lm'])
-        res = try_blas_flag(ret)
-        if res:
+        if res := try_blas_flag(ret):
             return res
 
         # Some environment don't have the lib dir in LD_LIBRARY_PATH.
         # So add it.
-        ret.extend(['-Wl,-rpath,' + l for l in
-                    blas_info.get('library_dirs', [])])
-        res = try_blas_flag(ret)
-        if res:
+        ret.extend(
+            [f'-Wl,-rpath,{l}' for l in blas_info.get('library_dirs', [])]
+        )
+        if res := try_blas_flag(ret):
             return res
 
         # Try to add the anaconda lib directory to runtime loading of lib.
@@ -1251,9 +1237,8 @@ def default_blas_ldflags():
              "Continuum" in sys.version) and
                 "linux" in sys.platform):
             lib_path = os.path.join(sys.prefix, 'lib')
-            ret.append('-Wl,-rpath,' + lib_path)
-            res = try_blas_flag(ret)
-            if res:
+            ret.append(f'-Wl,-rpath,{lib_path}')
+            if res := try_blas_flag(ret):
                 return res
 
     except KeyError:
@@ -1285,16 +1270,13 @@ def try_blas_flag(flags):
             return 0;
         }
         """)
-    cflags = flags + ['-L' + d for d in theano.gof.cmodule.std_lib_dirs()]
+    cflags = flags + [f'-L{d}' for d in theano.gof.cmodule.std_lib_dirs()]
     res = GCC_compiler.try_compile_tmp(
         test_code, tmp_prefix='try_blas_',
         flags=cflags, try_run=True)
     # res[0]: shows successful compilation
     # res[1]: shows successful execution
-    if res and res[0] and res[1]:
-        return ' '.join(flags)
-    else:
-        return ""
+    return ' '.join(flags) if res and res[0] and res[1] else ""
 
 AddConfigVar('blas.ldflags',
              "lib[s] to include for [Fortran] level-3 blas implementation",
@@ -1577,8 +1559,7 @@ AddConfigVar("compiledir_format",
 
 def default_compiledirname():
     formatted = theano.config.compiledir_format % compiledir_format_dict
-    safe = re.sub("[\(\)\s,]+", "_", formatted)
-    return safe
+    return re.sub("[\(\)\s,]+", "_", formatted)
 
 
 def filter_base_compiledir(path):
@@ -1621,10 +1602,8 @@ def filter_compiledir(path):
         try:
             open(init_file, 'w').close()
         except IOError as e:
-            if os.path.exists(init_file):
-                pass  # has already been created
-            else:
-                e.args += ('%s exist? %s' % (path, os.path.exists(path)),)
+            if not os.path.exists(init_file):
+                e.args += (f'{path} exist? {os.path.exists(path)}', )
                 raise
     return path
 

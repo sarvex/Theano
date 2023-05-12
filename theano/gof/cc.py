@@ -212,16 +212,16 @@ def struct_gen(args, struct_builders, blocks, sub):
     behavior = code_gen(blocks)
 
     # declares the storage
-    storage_decl = "\n".join(["PyObject* %s;" % arg for arg in args])
+    storage_decl = "\n".join([f"PyObject* {arg};" for arg in args])
     # in the constructor, sets the storage to the arguments
-    storage_set = "\n".join(["this->%s = %s;" % (arg, arg) for arg in args])
+    storage_set = "\n".join([f"this->{arg} = {arg};" for arg in args])
     # increments the storage's refcount in the constructor
-    storage_incref = "\n".join(["Py_XINCREF(%s);" % arg for arg in args])
+    storage_incref = "\n".join([f"Py_XINCREF({arg});" for arg in args])
     # decrements the storage's refcount in the destructor
-    storage_decref = "\n".join(["Py_XDECREF(this->%s);" % arg for arg in args])
+    storage_decref = "\n".join([f"Py_XDECREF(this->{arg});" for arg in args])
 
     args_names = ", ".join(args)
-    args_decl = ", ".join(["PyObject* %s" % arg for arg in args])
+    args_decl = ", ".join([f"PyObject* {arg}" for arg in args])
 
     # The following code stores the exception data in __ERROR, which
     # is a special field of the struct. __ERROR is a list of length 3
@@ -253,13 +253,9 @@ def struct_gen(args, struct_builders, blocks, sub):
         return %(failure_var)s;
         """ % sub
 
-    sub = dict(sub)
-    sub.update(locals())
-
-    # TODO: add some error checking to make sure storage_<x> are
-    # 1-element lists and __ERROR is a 3-elements list.
-
-    struct_code = """
+    sub = dict(sub) | locals()
+    return (
+        """
     namespace {
     struct %(name)s {
         PyObject* __ERROR;
@@ -301,9 +297,9 @@ def struct_gen(args, struct_builders, blocks, sub):
         }
     };
     }
-    """ % sub
-
-    return struct_code
+    """
+        % sub
+    )
 
 
 # The get_<x> functions complete the return value of r.get_<x>()
@@ -327,11 +323,11 @@ def get_c_declare(r, name, sub):
     # If some of these have `check_input=True` in their `.op`,
     # it means they need `r`'s dtype to be declared, so
     # we have to pass `check_input=True` to `c_declare`.
-    if ((any([getattr(c.op, 'check_input', config.check_input)
-              for (c, _) in r.clients
-              if not isinstance(c, string_types)]) or
-         (r.owner and
-          getattr(r.owner.op, 'check_input', config.check_input)))):
+    if any(
+        getattr(c.op, 'check_input', config.check_input)
+        for (c, _) in r.clients
+        if not isinstance(c, string_types)
+    ) or (r.owner and getattr(r.owner.op, 'check_input', config.check_input)):
         c_declare = r.type.c_declare(name, sub, True)
     else:
         c_declare = r.type.c_declare(name, sub, False)
@@ -364,15 +360,19 @@ def get_c_extract(r, name, sub):
     # checks on the variable.
     # However that code is not used by C code of the apply node creating
     # this variable, so there is no need to check `r.owner.op.check_input`.
-    if any([getattr(c.op, 'check_input', config.check_input)
-            for (c, _) in r.clients
-            if not isinstance(c, string_types)]):
+    if any(
+        getattr(c.op, 'check_input', config.check_input)
+        for (c, _) in r.clients
+        if not isinstance(c, string_types)
+    ):
         # check_broadcast is just an hack to easily remove just the
         # broadcast check on the old GPU back-end. This check isn't
         # done in the new GPU back-end or on the CPU.
-        if any([getattr(c.op, 'check_broadcast', True)
-                for (c, _) in r.clients
-                if not isinstance(c, string_types)]):
+        if any(
+            getattr(c.op, 'check_broadcast', True)
+            for (c, _) in r.clients
+            if not isinstance(c, string_types)
+        ):
             c_extract = r.type.c_extract(name, sub, True)
         else:
             try:
@@ -469,10 +469,7 @@ def apply_policy(policy, r, name, sub):
 
     """
     if isinstance(policy, (list, tuple)):
-        ret = ""
-        for sub_policy in policy:
-            ret += sub_policy(r, name, sub)
-        return ret
+        return "".join(sub_policy(r, name, sub) for sub_policy in policy)
     return policy(r, name, sub)
 
 
@@ -507,15 +504,15 @@ def struct_variable_codeblocks(variable, policies, id, symbol_table, sub):
 #    sub['name'] = name
     sub['id'] = id
     sub['fail'] = failure_code_init(sub)
-    sub['py_ptr'] = "py_%s" % name
-    sub['stor_ptr'] = "storage_%s" % name
+    sub['py_ptr'] = f"py_{name}"
+    sub['stor_ptr'] = f"storage_{name}"
     # struct_declare, struct_behavior, struct_cleanup, sub)
     struct_builder = CodeBlock(*[apply_policy(policy, variable, name, sub)
                                  for policy in policies[0]] + [sub])
     sub['id'] = id + 1
     sub['fail'] = failure_code(sub)
-    sub['py_ptr'] = "py_%s" % name
-    sub['stor_ptr'] = "storage_%s" % name
+    sub['py_ptr'] = f"py_{name}"
+    sub['stor_ptr'] = f"storage_{name}"
     # run_declare, run_behavior, run_cleanup, sub)
     block = CodeBlock(*[apply_policy(policy, variable, name, sub)
                         for policy in policies[1]] + [sub])
@@ -579,7 +576,7 @@ class CLinker(link.Linker):
 
         # This adds a hidden input which is the params for each node
         # that needs it
-        self.node_params = dict()
+        self.node_params = {}
         for node in self.node_order:
             params = node.run_params()
             if params is not graph.NoParams:
@@ -597,9 +594,11 @@ class CLinker(link.Linker):
 
         # The orphans field is listified to ensure a consistent order.
         # list(fgraph.orphans.difference(self.outputs))
-        self.orphans = list(r for r in self.variables
-                            if isinstance(r, graph.Constant) and
-                            r not in self.inputs)
+        self.orphans = [
+            r
+            for r in self.variables
+            if isinstance(r, graph.Constant) and r not in self.inputs
+        ]
         # C type constants (theano.scalar.Scalar). They don't request an object
         self.consts = []
         # Move c type from orphans (theano.scalar.Scalar) to self.consts

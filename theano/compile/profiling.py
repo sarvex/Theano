@@ -186,17 +186,18 @@ class ProfileStats(object):
     # param is called flag_time_thunks because most other attributes with time
     # in the name are times *of* something, rather than configuration flags.
     def __init__(self, atexit_print=True, flag_time_thunks=None, **kwargs):
-        if (hasattr(theano, 'sandbox') and
-                hasattr(theano.sandbox, 'cuda') and
-                theano.sandbox.cuda.cuda_enabled):
-            if os.environ.get('CUDA_LAUNCH_BLOCKING', '0') != '1':
-                raise Exception(
-                    "You are running the Theano profiler with CUDA enabled."
-                    " Theano GPU ops execution is asynchronous by default."
-                    " So by default, the profile is useless."
-                    " You must set the environment variable"
-                    " CUDA_LAUNCH_BLOCKING to 1 to tell the CUDA driver to"
-                    " synchronize the execution to get a meaningful profile.")
+        if (
+            hasattr(theano, 'sandbox')
+            and hasattr(theano.sandbox, 'cuda')
+            and theano.sandbox.cuda.cuda_enabled
+        ) and os.environ.get('CUDA_LAUNCH_BLOCKING', '0') != '1':
+            raise Exception(
+                "You are running the Theano profiler with CUDA enabled."
+                " Theano GPU ops execution is asynchronous by default."
+                " So by default, the profile is useless."
+                " You must set the environment variable"
+                " CUDA_LAUNCH_BLOCKING to 1 to tell the CUDA driver to"
+                " synchronize the execution to get a meaningful profile.")
 
         self.apply_callcount = {}
         self.output_size = {}
@@ -265,10 +266,7 @@ class ProfileStats(object):
         rval = {}
         for node in self.apply_callcount:
             typ = type(node.op)
-            if self.apply_cimpl[node]:
-                impl = 'C '
-            else:
-                impl = 'Py'
+            impl = 'C ' if self.apply_cimpl[node] else 'Py'
             rval.setdefault(typ, impl)
             if rval[typ] != impl and len(rval[typ]) == 2:
                 rval[typ] += impl
@@ -340,20 +338,13 @@ class ProfileStats(object):
         dict op -> 'C' or 'Py' depending how the op is implemented
 
         """
-        # timing is stored by node, we compute timing by Op on demand
-        rval = {}
-        for node in self.apply_callcount:
-            if self.apply_cimpl[node]:
-                rval[node.op] = 'C '
-            else:
-                rval[node.op] = 'Py'
-        return rval
+        return {
+            node.op: 'C ' if self.apply_cimpl[node] else 'Py'
+            for node in self.apply_callcount
+        }
 
     def summary_class(self, file=sys.stderr, N=None):
-        if self.apply_time:
-            local_time = sum(self.apply_time.values())
-        else:
-            local_time = 0
+        local_time = sum(self.apply_time.values()) if self.apply_time else 0
         if local_time == 0:
             print(('ProfileMode.summary_class: total time 0'
                    ' (did you forget to enable counters?)'), file=file)
@@ -434,10 +425,7 @@ class ProfileStats(object):
         print('', file=file)
 
     def summary_ops(self, file=sys.stderr, N=None):
-        if self.apply_time:
-            local_time = sum(self.apply_time.values())
-        else:
-            local_time = 0
+        local_time = sum(self.apply_time.values()) if self.apply_time else 0
         if local_time == 0:
             print(('ProfileMode.summary_ops: total time 0'
                    ' (did you forget to enable counters?)'), file=file)
@@ -512,10 +500,7 @@ class ProfileStats(object):
         print('', file=file)
 
     def summary_nodes(self, file=sys.stderr, N=None):
-        if self.apply_time:
-            local_time = sum(self.apply_time.values())
-        else:
-            local_time = 0
+        local_time = sum(self.apply_time.values()) if self.apply_time else 0
         if local_time == 0:
             print(('ProfileMode.summary_nodes: total time 0'
                    ' (did you forget to enable counters?)'), file=file)
@@ -626,7 +611,7 @@ class ProfileStats(object):
     def summary_function(self, file):
         print('Function profiling', file=file)
         print('==================', file=file)
-        print('  Message: %s' % self.message, file=file)
+        print(f'  Message: {self.message}', file=file)
         print('  Time in %i calls to Function.__call__: %es' % (
             self.fct_callcount, self.fct_call_time), file=file)
         if self.fct_call_time > 0:
@@ -751,10 +736,7 @@ class ProfileStats(object):
                 for var in node.outputs:
                     compute_map[var][0] = 1
                 idx = 0
-                if ignore_dmap:
-                    dmap = None
-                else:
-                    dmap = getattr(node.op, 'destroy_map', None)
+                dmap = None if ignore_dmap else getattr(node.op, 'destroy_map', None)
                 vmap = getattr(node.op, 'view_map', None)
                 val = nodes_mem[node]
 
@@ -771,10 +753,7 @@ class ProfileStats(object):
                 # allocated by the node
                 idx2 = 0
                 for out in node.outputs:
-                    if isinstance(out.type, CudaNdarrayType):
-                        cg = 1
-                    else:
-                        cg = 0
+                    cg = 1 if isinstance(out.type, CudaNdarrayType) else 0
                     ins = None
                     if dmap and idx2 in dmap:
                         vidx = dmap[idx2]
@@ -813,15 +792,13 @@ class ProfileStats(object):
                 for ins in node.inputs:
                     assert not (ins in view_of and viewed_by[ins])
                     # we trac the original var, so this shouldn't happen
-                    if isinstance(ins.type, CudaNdarrayType):
-                        cg = 1
-                    else:
-                        cg = 0
-                    if (dependencies[ins] and
-                            ins not in fgraph.outputs and
-                            ins.owner and
-                            all([compute_map[v][0]
-                                 for v in dependencies[ins]])):
+                    cg = 1 if isinstance(ins.type, CudaNdarrayType) else 0
+                    if (
+                        dependencies[ins]
+                        and ins not in fgraph.outputs
+                        and ins.owner
+                        and all(compute_map[v][0] for v in dependencies[ins])
+                    ):
                         if ins not in view_of and not viewed_by.get(ins, []):
                             running_memory_size[cg] -= var_mem[ins]
                         elif ins in view_of:
@@ -831,11 +808,6 @@ class ProfileStats(object):
                                     origin not in fgraph.inputs and
                                     not isinstance(origin, theano.Constant)):
                                 running_memory_size[cg] -= var_mem[origin]
-                    else:
-                        # ins is viewed_by something else, so its
-                        # memory isn't freed
-                        pass
-
             return [node_memory_size, running_memory_size,
                     running_max_memory_size, node_memory_saved_by_inplace,
                     node_memory_saved_by_view]
@@ -950,11 +922,12 @@ class ProfileStats(object):
                                     viewed_by[ins])
                         # We track of the original var, so this shouldn't
                         # happen
-                        if (dependencies[ins] and
-                                ins not in fgraph.outputs and
-                                ins.owner and
-                                all([compute_map[v][0]
-                                     for v in dependencies[ins]])):
+                        if (
+                            dependencies[ins]
+                            and ins not in fgraph.outputs
+                            and ins.owner
+                            and all(compute_map[v][0] for v in dependencies[ins])
+                        ):
                             if (ins not in view_of and
                                     not viewed_by.get(ins, [])):
                                 mem_freed += var_mem[ins]
@@ -967,11 +940,6 @@ class ProfileStats(object):
                                         not isinstance(origin,
                                                        theano.Constant)):
                                     mem_freed += var_mem[origin]
-                        else:
-                            # ins is viewed_by something else, so its
-                            # memory isn't freed
-                            pass
-
                     mem_count -= mem_freed
 
                     done_set.add(node)
@@ -1056,7 +1024,7 @@ class ProfileStats(object):
                 max_node_memory_size[0] = max(max_node_memory_size[0],
                                               sum(running_memory[0]))
                 max_running_max_memory_size[0] = \
-                    max(max_running_max_memory_size[0], sum(running_memory[2]))
+                        max(max_running_max_memory_size[0], sum(running_memory[2]))
 
                 # Separate CPU and GPU
                 max_node_memory_size[1] = max(max_node_memory_size[1],
@@ -1064,12 +1032,12 @@ class ProfileStats(object):
                 max_node_memory_size[2] = max(max_node_memory_size[2],
                                               running_memory[0][1])
                 max_running_max_memory_size[1] = \
-                    max(max_running_max_memory_size[1], running_memory[2][0])
+                        max(max_running_max_memory_size[1], running_memory[2][0])
                 max_running_max_memory_size[2] = \
-                    max(max_running_max_memory_size[2], running_memory[2][1])
+                        max(max_running_max_memory_size[2], running_memory[2][1])
 
                 max_node_memory_saved_by_inplace = \
-                    max(max_node_memory_saved_by_inplace, running_memory[3])
+                        max(max_node_memory_saved_by_inplace, running_memory[3])
                 max_node_memory_saved_by_view = max(max_node_memory_saved_by_view,
                                                     running_memory[4])
                 return (max_node_memory_size,
@@ -1174,8 +1142,7 @@ class ProfileStats(object):
                 code[out] = "v"
             shapes = str(fct_shapes[node.fgraph][node])
 
-            if all([hasattr(out.type, 'get_size')
-                    for out in node.outputs]):
+            if all(hasattr(out.type, 'get_size') for out in node.outputs):
                 size = "%9dB" % node_outputs_size
                 if node_outputs_size < config.profiling.min_memory_size:
                     N = idx
@@ -1183,8 +1150,7 @@ class ProfileStats(object):
             else:
                 size = "%10s" % "Unknown"
 
-            print('     %s  %s %s %s' % (size, shapes, ' '.join(code), node),
-                  file=file)
+            print(f"     {size}  {shapes} {' '.join(code)} {node}", file=file)
 
         sum_remaining = sum(size for _, size in items[N:])
         size_sum_dense = sum(node_mem.values())
@@ -1222,7 +1188,7 @@ class ProfileStats(object):
             print("  No execution time accumulated "
                   "(hint: try config profiling.time_thunks=1)", file=file)
         if config.profiling.debugprint:
-            fcts = set([n.fgraph for n in self.apply_time.keys()])
+            fcts = {n.fgraph for n in self.apply_time.keys()}
             theano.printing.debugprint(fcts, print_type=True)
         if self.variable_shape or self.variable_strides:
             self.summary_memory(file, n_apply_to_print)

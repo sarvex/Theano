@@ -239,16 +239,13 @@ class Validator(Feature):
             # exception. replace_all_validate will print out the
             # verbose output.
             # Or it has to be done here before raise.
-            if uf_info.function == 'replace_all_validate':
-                raise
-            else:
-                verbose = uf.f_locals.get('verbose', False)
-                if verbose:
+            if uf_info.function != 'replace_all_validate':
+                if verbose := uf.f_locals.get('verbose', False):
                     r = uf.f_locals.get('r', "")
                     reason = uf_info.function
                     print("validate failed on node %s.\n Reason: %s, %s" %
                           (r, reason, e))
-                raise
+            raise
         t1 = time.time()
         if fgraph.profile:
             fgraph.profile.validate_time += t1 - t0
@@ -442,16 +439,15 @@ class PrintListener(Feature):
 
     def on_import(self, fgraph, node, reason):
         if self.active:
-            print("-- importing: %s, reason: %s" % (node, reason))
+            print(f"-- importing: {node}, reason: {reason}")
 
     def on_prune(self, fgraph, node, reason):
         if self.active:
-            print("-- pruning: %s, reason: %s" % (node, reason))
+            print(f"-- pruning: {node}, reason: {reason}")
 
     def on_change_input(self, fgraph, node, i, r, new_r, reason=None):
         if self.active:
-            print("-- changing (%s.inputs[%s]) from %s to %s" % (
-                node, i, r, new_r))
+            print(f"-- changing ({node}.inputs[{i}]) from {r} to {new_r}")
 
 
 class PreserveNames(Feature):
@@ -474,8 +470,9 @@ class PreserveVariableAttributes(Feature):
     def on_change_input(self, fgraph, node, i, r, new_r, reason=None):
         if r.name is not None and new_r.name is None:
             new_r.name = r.name
-        if getattr(r.tag, 'nan_guard_mode_check', False) and getattr(
-                new_r.tag, 'nan_guard_mode_check', False) is False:
+        if getattr(r.tag, 'nan_guard_mode_check', False) and not getattr(
+            new_r.tag, 'nan_guard_mode_check', False
+        ):
             new_r.tag.nan_guard_mode_check = r.tag.nan_guard_mode_check
 
 

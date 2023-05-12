@@ -31,7 +31,7 @@ def log_thunk_trace(value, f=sys.stderr):
     # in future, consider accepting `write` as arg rather than file
     # to support writing to a logger
     def write(msg):
-        print("log_thunk_trace: %s" % msg.strip(), file=f)
+        print(f"log_thunk_trace: {msg.strip()}", file=f)
 
     if hasattr(value, '__thunk_trace__'):
         trace2 = value.__thunk_trace__
@@ -123,10 +123,7 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
     exc_value.__thunk_trace__ = trace
     exc_value.__op_instance__ = node
     topo = node.fgraph.toposort()
-    if node in topo:
-        node_index = topo.index(node)
-    else:
-        node_index = None
+    node_index = topo.index(node) if node in topo else None
     exc_value.__applynode_index__ = node_index
 
     hints = []
@@ -154,9 +151,9 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
             strides = "So we can't access the strides of inputs values"
             scalar_values = "And can't print its inputs scalar value"
         clients = [[c[0] for c in var.clients] for var in node.outputs]
-        detailed_err_msg += ("Inputs shapes: %s" % shapes +
-                             "\nInputs strides: %s" % strides +
-                             "\nInputs values: %s" % scalar_values)
+        detailed_err_msg += (
+            f"Inputs shapes: {shapes}" + "\nInputs strides: %s" % strides
+        ) + "\nInputs values: %s" % scalar_values
         if hasattr(node.op, '__input_name__'):
             detailed_err_msg += "\nInputs name: %s\n" % str(node.op.__input_name__)
 
@@ -168,7 +165,7 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
 
     # Print node backtraces
     tr = getattr(node.outputs[0].tag, 'trace', [])
-    if type(tr) is list and len(tr) > 0:
+    if type(tr) is list and tr:
         detailed_err_msg += "\nBacktrace when the node is created(use Theano flag traceback.limit=N to make it longer):\n"
 
         # Print separate message for each element in the list of batcktraces
@@ -205,10 +202,7 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
         total_size = 0
         total_size_inputs = 0
         for k in storage_map:
-            storage_map_item = []
-
-            # storage_map_item[0]: the variable
-            storage_map_item.append(str(k))
+            storage_map_item = [str(k)]
 
             # storage_map_item[1]: the shape
             shapeinfo = None
@@ -262,9 +256,7 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
                                     total_size -= sz
             else:
                 bytes = getsizeof(storage_map[k][0])
-                storage_map_item.append(bytes)
-                storage_map_item.append(-1)
-
+                storage_map_item.extend((bytes, -1))
             # Flag of shared val
             # storage_map_item[4]
             if k in shared_input_list:
@@ -280,14 +272,14 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
         for item in storage_map_list:
             if item[3] == -1:
                 continue
-            detailed_err_msg += " - " + item[0] + ", "
+            detailed_err_msg += f" - {item[0]}, "
             if item[4] is True:
                 detailed_err_msg += "Shared Input, "
             elif item[4] is False:
                 detailed_err_msg += "Input, "
             if item[1] is not None:
-                detailed_err_msg += "Shape: %s, " % str(item[1])
-            detailed_err_msg += "ElemSize: %s Byte(s)" % item[2]
+                detailed_err_msg += f"Shape: {str(item[1])}, "
+            detailed_err_msg += f"ElemSize: {item[2]} Byte(s)"
             if item[3] is not None:
                 detailed_err_msg += ", TotalSize: %s Byte(s)\n" % item[3]
             else:
@@ -306,11 +298,9 @@ def raise_with_op(node, thunk=None, exc_info=None, storage_map=None):
         exc_value = exc_type(str(exc_value) + detailed_err_msg +
                              '\n' + '\n'.join(hints))
     except TypeError:
-        print("WARNING: %s error does not allow us to add extra error message" %
-              str(exc_type))
-        # Some exception need extra parameter in inputs. So forget the
-        # extra long error message in that case.
-        pass
+        print(
+            f"WARNING: {str(exc_type)} error does not allow us to add extra error message"
+        )
     reraise(exc_type, exc_value, exc_trace)
 
 
@@ -426,19 +416,11 @@ class Container(object):
 
     def __init__(self, r, storage, readonly=False, strict=False,
                  allow_downcast=None, name=None):
-        if not isinstance(storage, list) or not len(storage) >= 1:
+        if not isinstance(storage, list) or len(storage) < 1:
             raise TypeError("storage must be a list of length at least one")
         # self.r = r
-        if isinstance(r, Type):
-            self.type = r
-        else:
-            self.type = r.type
-        if name is None:
-            # Some Type do not have a name field.
-            self.name = getattr(r, 'name', None)
-        else:
-            self.name = name
-
+        self.type = r if isinstance(r, Type) else r.type
+        self.name = getattr(r, 'name', None) if name is None else name
         self.storage = storage
         self.readonly = readonly
         self.strict = strict
@@ -449,7 +431,7 @@ class Container(object):
 
     def __set__(self, value):
         if self.readonly:
-            raise Exception("Cannot set readonly storage: %s" % self.name)
+            raise Exception(f"Cannot set readonly storage: {self.name}")
         try:
             if value is None:
                 self.storage[0] = None
@@ -468,16 +450,16 @@ class Container(object):
                 self.storage[0] = self.type.filter(value, **kwargs)
 
         except Exception as e:
-            e.args = e.args + (('Container name "%s"' % self.name),)
+            e.args = e.args + (f'Container name "{self.name}"', )
             raise
     data = property(__get__, __set__)
     value = property(__get__, __set__)
 
     def __str__(self):
-        return "<" + str(self.storage[0]) + ">"
+        return f"<{str(self.storage[0])}>"
 
     def __repr__(self):
-        return "<" + repr(self.storage[0]) + ">"
+        return f"<{repr(self.storage[0])}>"
 
     def __deepcopy__(self, memo):
         data_was_in_memo = id(self.storage[0]) in memo
@@ -551,7 +533,7 @@ def map_storage(fgraph, order, input_storage, output_storage, storage_map=None):
 
     # input_storage is a list of data-containers for the inputs.
     if input_storage is None:
-        input_storage = [[None] for input in fgraph.inputs]
+        input_storage = [[None] for _ in fgraph.inputs]
     else:
         assert len(fgraph.inputs) == len(input_storage)
 
@@ -805,10 +787,7 @@ class PerformLinker(LocalLinker):
 
         input_storage, output_storage, storage_map = map_storage(fgraph, order, input_storage, output_storage, storage_map)
 
-        compute_map = {}
-        for k in storage_map:
-            compute_map[k] = [k.owner is None]
-
+        compute_map = {k: [k.owner is None] for k in storage_map}
         thunks = []
         for node in order:
             # Maker sure we don't use C version of the code, but rather only
@@ -828,11 +807,7 @@ class PerformLinker(LocalLinker):
                 node.op._op_use_c_code = old_value
 
         computed, last_user = gc_helper(order)
-        if self.allow_gc:
-            post_thunk_old_storage = []
-        else:
-            post_thunk_old_storage = None
-
+        post_thunk_old_storage = [] if self.allow_gc else None
         for node in order:
             if self.allow_gc:
                 post_thunk_old_storage.append(
@@ -929,10 +904,9 @@ class WrapLinker(Linker):
         is called. In this case, we want the wrapped linkers to be copied too.
 
         """
-        other = self.__class__(
-            linkers=[copy(l) for l in self.linkers],
-            wrapper=self.wrapper)
-        return other
+        return self.__class__(
+            linkers=[copy(l) for l in self.linkers], wrapper=self.wrapper
+        )
 
     def clone(self, allow_gc=undef):
         return self.__class__(
@@ -975,11 +949,11 @@ class WrapLinker(Linker):
         make_all += [l.make_all(**kwargs) for l in self.linkers[1:]]
 
         fns, input_lists, output_lists, thunk_lists, order_lists \
-            = zip(*make_all)
+                = zip(*make_all)
 
         order_list0 = order_lists[0]
         for order_list in order_lists[1:]:
-            if not order_list0 == order_list:
+            if order_list0 != order_list:
                 raise Exception(
                     "All linkers to WrapLinker should execute operations in the same order.")
 
@@ -1012,6 +986,7 @@ class WrapLinker(Linker):
                     wrapper(i, node, *thunks)
                 except Exception:
                     raise_with_op(node, *thunks)
+
         f.thunk_groups = thunk_groups
 
         return f, inputs0, outputs0

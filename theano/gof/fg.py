@@ -194,7 +194,7 @@ class FunctionGraph(utils.object2):
         if (hasattr(r, 'fgraph') and
                 r.fgraph is not None and
                 r.fgraph is not self):
-            raise Exception("%s is already owned by another fgraph" % r)
+            raise Exception(f"{r} is already owned by another fgraph")
         r.fgraph = self
         r.clients = []
         # self.execute_callbacks('on_setup_variable', r)
@@ -202,7 +202,7 @@ class FunctionGraph(utils.object2):
     def __setup_node__(self, node):
         # sets up node so it belongs to this fgraph
         if hasattr(node, 'fgraph') and node.fgraph is not self:
-            raise Exception("%s is already owned by another fgraph" % node)
+            raise Exception(f"{node} is already owned by another fgraph")
         if (hasattr(node.op, 'view_map') and
             not all(isinstance(view, (list, tuple))
                     for view in itervalues(node.op.view_map))):
@@ -336,17 +336,14 @@ class FunctionGraph(utils.object2):
         # another place.
         # assert variable in self.variables
 
-        if variable in self.variables:
-            # If the owner have other outputs still used,
-            # then we must keep that variable in the graph.
-            if not variable.owner or not any(
-                [var for var in variable.owner.outputs
-                 if var.clients]):
-
-                self.variables.remove(variable)
-                # This allow to quickly know if a var is still in the fgraph
-                # or not.
-                del variable.fgraph
+        if variable in self.variables and (
+            not variable.owner
+            or not any(var for var in variable.owner.outputs if var.clients)
+        ):
+            self.variables.remove(variable)
+            # This allow to quickly know if a var is still in the fgraph
+            # or not.
+            del variable.fgraph
         return False
 
     # import #
@@ -368,7 +365,7 @@ class FunctionGraph(utils.object2):
                 raise TypeError("Computation graph contains a NaN. " +
                                 variable.type.why_null)
             raise MissingInputError("Undeclared input", variable)
-        if not getattr(variable, 'fgraph', None) is self:
+        if getattr(variable, 'fgraph', None) is not self:
             self.__setup_r__(variable)
         self.variables.add(variable)
 
@@ -388,10 +385,10 @@ class FunctionGraph(utils.object2):
         if check:
             for node in new_nodes:
                 if hasattr(node, 'fgraph') and node.fgraph is not self:
-                    raise Exception("%s is already owned by another fgraph" % node)
+                    raise Exception(f"{node} is already owned by another fgraph")
                 for r in node.inputs:
                     if hasattr(r, 'fgraph') and r.fgraph is not self:
-                        raise Exception("%s is already owned by another fgraph" % r)
+                        raise Exception(f"{r} is already owned by another fgraph")
                     if (r.owner is None and
                             not isinstance(r, graph.Constant) and
                             r not in self.inputs):
@@ -450,7 +447,7 @@ class FunctionGraph(utils.object2):
                             assert path is not None
                             tr = getattr(r.tag, 'trace', [])
                             detailed_err_msg = ""
-                            if type(tr) is list and len(tr) > 0:
+                            if type(tr) is list and tr:
                                 detailed_err_msg += "\nBacktrace when the variable is created:\n"
 
                                 # Print separate message for each element in
@@ -508,7 +505,7 @@ class FunctionGraph(utils.object2):
         # TODO: ERROR HANDLING FOR LISTENERS (should it complete the change or revert it?)
         if node == 'output':
             r = self.outputs[i]
-            if not r.type == new_r.type:
+            if r.type != new_r.type:
                 raise TypeError("The type of the replacement must be the"
                                 " same as the type of the original Variable.",
                                 r, new_r)
@@ -518,7 +515,7 @@ class FunctionGraph(utils.object2):
                 raise Exception("Cannot operate on %s because it does not"
                                 " belong to this FunctionGraph" % node)
             r = node.inputs[i]
-            if not r.type == new_r.type:
+            if r.type != new_r.type:
                 raise TypeError("The type of the replacement must be the"
                                 " same as the type of the original Variable.",
                                 r, new_r)
@@ -721,9 +718,7 @@ class FunctionGraph(utils.object2):
 
         ords = self.orderings()
 
-        order = graph.io_toposort(fg.inputs, fg.outputs, ords)
-
-        return order
+        return graph.io_toposort(fg.inputs, fg.outputs, ords)
 
     def orderings(self):
         """
@@ -816,7 +811,7 @@ class FunctionGraph(utils.object2):
                                     variable, node.inputs[i])
 
     def __str__(self):
-        return "[%s]" % ", ".join(graph.as_string(self.inputs, self.outputs))
+        return f'[{", ".join(graph.as_string(self.inputs, self.outputs))}]'
 
     def __repr__(self):
         return self.__str__()

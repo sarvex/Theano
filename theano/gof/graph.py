@@ -110,7 +110,9 @@ class Apply(Node):
             if isinstance(input, Variable):
                 self.inputs.append(input)
             else:
-                raise TypeError("The 'inputs' argument to Apply must contain Variable instances, not %s" % input)
+                raise TypeError(
+                    f"The 'inputs' argument to Apply must contain Variable instances, not {input}"
+                )
         self.outputs = []
         # filter outputs to make sure each element is a Variable
         for i, output in enumerate(outputs):
@@ -122,16 +124,16 @@ class Apply(Node):
                     raise ValueError("All output variables passed to Apply must belong to it.")
                 self.outputs.append(output)
             else:
-                raise TypeError("The 'outputs' argument to Apply must contain Variable instances with no owner, not %s" % output)
+                raise TypeError(
+                    f"The 'outputs' argument to Apply must contain Variable instances with no owner, not {output}"
+                )
 
     def run_params(self):
         """
         Returns the params for the node, or NoParams if no params is set.
 
         """
-        if hasattr(self.op, 'get_params'):
-            return self.op.get_params(self)
-        return NoParams
+        return self.op.get_params(self) if hasattr(self.op, 'get_params') else NoParams
 
     def __getstate__(self):
         d = self.__dict__
@@ -163,14 +165,11 @@ class Apply(Node):
             if len(self.outputs) == 1:
                 return self.outputs[0]
             else:
-                raise AttributeError(
-                    "%s.default_output should be an output index." % self.op)
+                raise AttributeError(f"{self.op}.default_output should be an output index.")
         elif not isinstance(do, integer_types):
-            raise AttributeError("%s.default_output should be an int or long" %
-                                 self.op)
+            raise AttributeError(f"{self.op}.default_output should be an int or long")
         elif do < 0 or do >= len(self.outputs):
-            raise AttributeError("%s.default_output is out of range." %
-                                 self.op)
+            raise AttributeError(f"{self.op}.default_output is out of range.")
         return self.outputs[do]
 
     out = property(default_output,
@@ -236,7 +235,7 @@ class Apply(Node):
         remake_node = False
         new_inputs = inputs[:]
         for i, (curr, new) in enumerate(zip(self.inputs, new_inputs)):
-            if not curr.type == new.type:
+            if curr.type != new.type:
                 if strict:
                     # If compatible, casts new into curr.type
                     new_inputs[i] = curr.type.filter_variable(new)
@@ -389,7 +388,7 @@ class Variable(Node):
         if name is not None and not isinstance(name, string_types):
             raise TypeError("name must be a string", name)
         self.name = name
-        self.auto_name = 'auto_' + str(next(self.__count__))
+        self.auto_name = f'auto_{str(next(self.__count__))}'
 
     def __str__(self):
         """Return a str representation of the Variable.
@@ -397,14 +396,14 @@ class Variable(Node):
         """
         if self.name is not None:
             return self.name
-        if self.owner is not None:
-            op = self.owner.op
-            if self.index == op.default_output:
-                return str(self.owner.op) + ".out"
-            else:
-                return str(self.owner.op) + "." + str(self.index)
-        else:
-            return "<%s>" % str(self.type)
+        if self.owner is None:
+            return f"<{str(self.type)}>"
+        op = self.owner.op
+        return (
+            f"{str(self.owner.op)}.out"
+            if self.index == op.default_output
+            else f"{str(self.owner.op)}.{str(self.index)}"
+        )
 
     def __repr_test_value__(self):
         """Return a repr of the test value.
@@ -469,9 +468,7 @@ class Variable(Node):
                                   self.__class__.__name__)
 
     def get_parents(self):
-        if self.owner is not None:
-            return [self.owner]
-        return []
+        return [self.owner] if self.owner is not None else []
 
     def eval(self, inputs_to_values=None):
         """
@@ -513,16 +510,14 @@ class Variable(Node):
             inputs_to_values = {}
 
         if not hasattr(self, '_fn_cache'):
-            self._fn_cache = dict()
+            self._fn_cache = {}
 
         inputs = tuple(sorted(inputs_to_values.keys(), key=id))
         if inputs not in self._fn_cache:
             self._fn_cache[inputs] = theano.function(inputs, self)
         args = [inputs_to_values[param] for param in inputs]
 
-        rval = self._fn_cache[inputs](*args)
-
-        return rval
+        return self._fn_cache[inputs](*args)
 
     def __getstate__(self):
         d = self.__dict__.copy()
@@ -565,11 +560,10 @@ class Constant(Variable):
     def __str__(self):
         if self.name is not None:
             return self.name
-        else:
-            name = str(self.data)
-            if len(name) > 20:
-                name = name[:10] + '...' + name[-10:]
-            return 'Constant{%s}' % name
+        name = str(self.data)
+        if len(name) > 20:
+            name = f'{name[:10]}...{name[-10:]}'
+        return 'Constant{%s}' % name
 
     def clone(self):
         """
@@ -630,27 +624,21 @@ def stack_search(start, expand, mode='bfs', build_inv=False):
     if mode not in ('bfs', 'dfs'):
         raise ValueError('mode should be bfs or dfs', mode)
     rval_set = set()
-    rval_list = list()
-    if mode == 'bfs':
-        start_pop = start.popleft
-    else:
-        start_pop = start.pop
+    rval_list = []
+    start_pop = start.popleft if mode == 'bfs' else start.pop
     expand_inv = {}
     while start:
         l = start_pop()
         if id(l) not in rval_set:
             rval_list.append(l)
             rval_set.add(id(l))
-            expand_l = expand(l)
-            if expand_l:
+            if expand_l := expand(l):
                 if build_inv:
                     for r in expand_l:
                         expand_inv.setdefault(r, []).append(l)
                 start.extend(expand_l)
     assert len(rval_list) == len(rval_set)
-    if build_inv:
-        return rval_list, expand_inv
-    return rval_list
+    return (rval_list, expand_inv) if build_inv else rval_list
 
 
 def ancestors(variable_list, blockers=None):
@@ -695,8 +683,7 @@ def inputs(variable_list, blockers=None):
 
     """
     vlist = ancestors(variable_list, blockers)
-    rval = [r for r in vlist if r.owner is None]
-    return rval
+    return [r for r in vlist if r.owner is None]
 
 
 def variables_and_orphans(i, o):
@@ -734,13 +721,12 @@ def ops(i, o):
         in i.
 
     """
-    ops = set()
     variables, orphans = variables_and_orphans(i, o)
-    for r in variables:
-        if r not in i and r not in orphans:
-            if r.owner is not None:
-                ops.add(r.owner)
-    return ops
+    return {
+        r.owner
+        for r in variables
+        if r not in i and r not in orphans and r.owner is not None
+    }
 
 
 def variables(i, o):
@@ -1021,7 +1007,7 @@ default_leaf_formatter = str
 
 
 def default_node_formatter(op, argstrings):
-    return "%s(%s)" % (op.op, ", ".join(argstrings))
+    return f'{op.op}({", ".join(argstrings)})'
 
 
 def io_connection_pattern(inputs, outputs):
@@ -1082,7 +1068,7 @@ def io_connection_pattern(inputs, outputs):
 
     # Obtain the global connection pattern by combining the
     # connnection patterns of the individual outputs
-    global_connection_pattern = [[] for o in range(len(inputs))]
+    global_connection_pattern = [[] for _ in range(len(inputs))]
     for out in outputs:
         out_connection_pattern = connect_pattern_by_var[out]
         for i in range(len(inputs)):
@@ -1173,8 +1159,7 @@ def is_same_graph(var1, var2, givens=None, debug=False):
         for to_replace, replace_by in iteritems(givens):
             # Map a substitution variable to the computational graphs it
             # belongs to.
-            inside = dict((v, [in_var(v, k) for k in (1, 2)])
-                          for v in (to_replace, replace_by))
+            inside = {v: [in_var(v, k) for k in (1, 2)] for v in (to_replace, replace_by)}
             if (inside[to_replace][0] and not inside[to_replace][1] and
                     inside[replace_by][1] and not inside[replace_by][0]):
                 # Substitute variable in `var1` by one from `var2`.
@@ -1266,31 +1251,24 @@ def as_string(i, o,
                 multi.add(op2)
             else:
                 seen.add(input.owner)
-    multi = [x for x in multi]
+    multi = list(multi)
     done = set()
 
     def multi_index(x):
         return multi.index(x) + 1
 
     def describe(r):
-        if r.owner is not None and r not in i and r not in orph:
-            op = r.owner
-            idx = op.outputs.index(r)
-            if len(op.outputs) == 1:
-                idxs = ""
-            else:
-                idxs = "::%i" % idx
-            if op in done:
-                return "*%i%s" % (multi_index(op), idxs)
-            else:
-                done.add(op)
-                s = node_formatter(op, [describe(input) for input in op.inputs])
-                if op in multi:
-                    return "*%i -> %s" % (multi_index(op), s)
-                else:
-                    return s
-        else:
+        if r.owner is None or r in i or r in orph:
             return leaf_formatter(r)
+
+        op = r.owner
+        idx = op.outputs.index(r)
+        idxs = "" if len(op.outputs) == 1 else "::%i" % idx
+        if op in done:
+            return "*%i%s" % (multi_index(op), idxs)
+        done.add(op)
+        s = node_formatter(op, [describe(input) for input in op.inputs])
+        return "*%i -> %s" % (multi_index(op), s) if op in multi else s
 
     return [describe(output) for output in o]
 
@@ -1304,22 +1282,19 @@ def view_roots(r):
 
     """
     owner = r.owner
-    if owner is not None:
-        try:
-            view_map = owner.op.view_map
-            view_map = dict((owner.outputs[o], i)
-                            for o, i in iteritems(view_map))
-        except AttributeError:
-            return [r]
-        if r in view_map:
-            answer = []
-            for i in view_map[r]:
-                answer += view_roots(owner.inputs[i])
-            return answer
-        else:
-            return [r]
-    else:
+    if owner is None:
         return [r]
+    try:
+        view_map = owner.op.view_map
+        view_map = {owner.outputs[o]: i for o, i in iteritems(view_map)}
+    except AttributeError:
+        return [r]
+    if r not in view_map:
+        return [r]
+    answer = []
+    for i in view_map[r]:
+        answer += view_roots(owner.inputs[i])
+    return answer
 
 
 def list_of_nodes(inputs, outputs):
@@ -1329,6 +1304,9 @@ def list_of_nodes(inputs, outputs):
     """
     return stack_search(
         deque([o.owner for o in outputs]),
-        lambda o: [inp.owner for inp in o.inputs
-                   if inp.owner and
-                   not any(i in inp.owner.outputs for i in inputs)])
+        lambda o: [
+            inp.owner
+            for inp in o.inputs
+            if inp.owner and all(i not in inp.owner.outputs for i in inputs)
+        ],
+    )

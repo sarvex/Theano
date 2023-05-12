@@ -29,15 +29,14 @@ def flatten(l):
         A flattened list of objects.
 
     """
-    if isinstance(l, (list, tuple, collections.ValuesView)):
-        rval = []
-        for elem in l:
-            if isinstance(elem, (list, tuple)):
-                rval.extend(flatten(elem))
-            else:
-                rval.append(elem)
-    else:
+    if not isinstance(l, (list, tuple, collections.ValuesView)):
         return [l]
+    rval = []
+    for elem in l:
+        if isinstance(elem, (list, tuple)):
+            rval.extend(flatten(elem))
+        else:
+            rval.append(elem)
     return rval
 
 
@@ -77,9 +76,8 @@ def contains_nan(arr, node=None):
                 # It store ints in float container
                 theano.sandbox.rng_mrg.GPU_mrg_uniform)):
             return False
-        else:
-            compile_gpu_func(True, False, False)
-            return np.isnan(f_gpumin(arr.reshape(arr.size)))
+        compile_gpu_func(True, False, False)
+        return np.isnan(f_gpumin(arr.reshape(arr.size)))
 
     return np.isnan(np.min(arr))
 
@@ -121,10 +119,9 @@ def contains_inf(arr, node=None):
                 # It store ints in float container
                 theano.sandbox.rng_mrg.GPU_mrg_uniform)):
             return False
-        else:
-            compile_gpu_func(False, True, False)
-            return (np.isinf(f_gpumin(arr.reshape(arr.size))) or
-                    np.isinf(f_gpumax(arr.reshape(arr.size))))
+        compile_gpu_func(False, True, False)
+        return (np.isinf(f_gpumin(arr.reshape(arr.size))) or
+                np.isinf(f_gpumax(arr.reshape(arr.size))))
 
     return np.isinf(np.nanmax(arr)) or np.isinf(np.nanmin(arr))
 
@@ -232,14 +229,12 @@ class NanGuardMode(Mode):
             """
             error = False
             sio = StringIO()
-            if nan_is_error:
-                if contains_nan(var, nd):
-                    print('NaN detected', file=sio)
-                    error = True
-            if inf_is_error:
-                if contains_inf(var, nd):
-                    print('Inf detected', file=sio)
-                    error = True
+            if nan_is_error and contains_nan(var, nd):
+                print('NaN detected', file=sio)
+                error = True
+            if inf_is_error and contains_inf(var, nd):
+                print('Inf detected', file=sio)
+                error = True
             if big_is_error:
                 err = False
                 if isinstance(var, theano.gof.type.CDataType._cdata_type):

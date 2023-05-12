@@ -42,9 +42,8 @@ class NoDuplicateOptWarningFilter(logging.Filter):
         if msg.startswith('Optimization Warning: '):
             if msg in self.prev_msgs:
                 return False
-            else:
-                self.prev_msgs.add(msg)
-                return True
+            self.prev_msgs.add(msg)
+            return True
         return True
 
 _logger.addFilter(NoDuplicateOptWarningFilter())
@@ -141,7 +140,7 @@ class BadThunkOutput(DebugModeError):
                 scalar_values.append(ipt)
             else:
                 scalar_values.append("not shown")
-        print("  Inputs values: %s" % scalar_values, file=sio)
+        print(f"  Inputs values: {scalar_values}", file=sio)
         print("  Bad Variable:", self.r, file=sio)
         print("  thunk1  :", self.thunk1, file=sio)
         print("  thunk2  :", self.thunk2, file=sio)
@@ -149,8 +148,7 @@ class BadThunkOutput(DebugModeError):
         # Don't import it at the top of the file to prevent circular import.
         utt = theano.tests.unittest_tools
         print(utt.str_diagnostic(self.val1, self.val2, None, None), file=sio)
-        ret = sio.getvalue()
-        return ret
+        return sio.getvalue()
 
 
 class BadOptimization(DebugModeError):
@@ -250,7 +248,7 @@ class BadOptimization(DebugModeError):
             print("  Old Value: ", str(self.old_r_val)[
                 :val_str_len_limit], '...', file=sio)
         else:
-            print("  Old Value: ", str(self.old_r_val), file=sio)
+            print("  Old Value: ", self.old_r_val, file=sio)
 
         try:
             ssio = StringIO()
@@ -267,7 +265,7 @@ class BadOptimization(DebugModeError):
             print("  New Value: ", str(self.new_r_val)[
                 :val_str_len_limit], '...', file=sio)
         else:
-            print("  New Value: ", str(self.new_r_val), file=sio)
+            print("  New Value: ", self.new_r_val, file=sio)
 
         try:
             ov = numpy.asarray(self.old_r_val)
@@ -301,7 +299,7 @@ class BadOptimization(DebugModeError):
         except Exception:
             pass
 
-        print("  Reason: ", str(self.reason), file=sio)
+        print("  Reason: ", self.reason, file=sio)
         print("  Old Graph:", file=sio)
         print(self.old_graph, file=sio)
         print("  New Graph:", file=sio)
@@ -365,7 +363,7 @@ class BadDestroyMap(DebugModeError):
                   numpy.transpose(numpy.nonzero(delta))[:10], file=sio)
             print("", file=sio)
         except Exception as e:
-            print("(Numpy-hints failed with: %s)" % str(e), file=sio)
+            print(f"(Numpy-hints failed with: {str(e)})", file=sio)
         print("  Hint: this can also be caused by a deficient "
               "values_eq_approx() or __eq__() implementation "
               "[which compared input values]", file=sio)
@@ -442,7 +440,7 @@ class InvalidValueError(DebugModeError):
         r, v = self.r, self.v
         type_r = r.type
         type_v = type(v)
-        v_val = str(v)[0:100]
+        v_val = str(v)[:100]
         v_dtype = 'N/A'
         v_shape = 'N/A'
         v_min = 'N/A'
@@ -493,11 +491,7 @@ def char_from_number(number):
 
     base = 26
 
-    rval = ""
-
-    if number == 0:
-        rval = 'A'
-
+    rval = 'A' if number == 0 else ""
     while number != 0:
         remainder = number % base
         new_char = chr(ord('A') + remainder)
@@ -562,16 +556,12 @@ def debugprint(r, prefix='', depth=-1, done=None, print_type=False,
         order = []
 
     if done is None:
-        done = dict()
+        done = {}
 
     if scan_ops is None:
         scan_ops = []
 
-    if print_type:
-        type_str = ' <%s>' % r.type
-    else:
-        type_str = ''
-
+    type_str = f' <{r.type}>' if print_type else ''
     if prefix_child is None:
         prefix_child = prefix
 
@@ -579,11 +569,11 @@ def debugprint(r, prefix='', depth=-1, done=None, print_type=False,
         if obj in done:
             id_str = done[obj]
         elif ids == "id":
-            id_str = "[id %s]" % str(id(r))
+            id_str = f"[id {id(r)}]"
         elif ids == "int":
-            id_str = "[id %s]" % str(len(done))
+            id_str = f"[id {len(done)}]"
         elif ids == "CHAR":
-            id_str = "[id %s]" % char_from_number(len(done))
+            id_str = f"[id {char_from_number(len(done))}]"
         elif ids == "":
             id_str = ""
         done[obj] = id_str
@@ -602,18 +592,15 @@ def debugprint(r, prefix='', depth=-1, done=None, print_type=False,
             r_name = ''
 
         if print_destroy_map:
-            destroy_map_str = str(getattr(r.owner.op, 'destroy_map', ''))
+            destroy_map_str = getattr(r.owner.op, 'destroy_map', '')
         else:
             destroy_map_str = ''
 
-        if print_view_map:
-            view_map_str = str(getattr(r.owner.op, 'view_map', ''))
-        else:
-            view_map_str = ''
+        view_map_str = getattr(r.owner.op, 'view_map', '') if print_view_map else ''
         if destroy_map_str and destroy_map_str != '{}':
-            destroy_map_str = 'd=' + destroy_map_str
+            destroy_map_str = f'd={destroy_map_str}'
         if view_map_str and view_map_str != '{}':
-            view_map_str = 'v=' + view_map_str
+            view_map_str = f'v={view_map_str}'
 
         o = ''
         if order:
@@ -622,10 +609,7 @@ def debugprint(r, prefix='', depth=-1, done=None, print_type=False,
         already_printed = a in done  # get_id_str put it in the dict
         id_str = get_id_str(a)
 
-        if len(a.outputs) == 1:
-            idx = ""
-        else:
-            idx = ".%i" % a.outputs.index(r)
+        idx = "" if len(a.outputs) == 1 else ".%i" % a.outputs.index(r)
         data = ""
         if smap:
             data = " " + str(smap.get(a.outputs[0], ''))
@@ -644,10 +628,7 @@ def debugprint(r, prefix='', depth=-1, done=None, print_type=False,
             tot_time = tot_time_dict[a]
             tot_time_percent = (tot_time_dict[a] / profile.fct_call_time) * 100
 
-            if len(a.outputs) == 1:
-                idx = ""
-            else:
-                idx = ".%i" % a.outputs.index(r)
+            idx = "" if len(a.outputs) == 1 else ".%i" % a.outputs.index(r)
             print("%s%s%s %s%s '%s' %s %s %s%s --> "
                   "%8.2es %4.1f%% %8.2es %4.1f%%"
                   % (prefix, a.op,
@@ -662,29 +643,31 @@ def debugprint(r, prefix='', depth=-1, done=None, print_type=False,
                      tot_time,
                      tot_time_percent), file=file)
 
-        if not already_printed:
-            if (not stop_on_name or
-                    not (hasattr(r, 'name') and r.name is not None)):
-                new_prefix = prefix_child + ' |'
-                new_prefix_child = prefix_child + ' |'
+        if not already_printed and (
+            not stop_on_name or not (hasattr(r, 'name') and r.name is not None)
+        ):
+            new_prefix = f'{prefix_child} |'
+            new_prefix_child = f'{prefix_child} |'
 
-                for idx, i in enumerate(a.inputs):
-                    if idx == len(a.inputs) - 1:
-                        new_prefix_child = prefix_child + '  '
+            for idx, i in enumerate(a.inputs):
+                if idx == len(a.inputs) - 1:
+                    new_prefix_child = f'{prefix_child}  '
 
-                    if hasattr(i, 'owner') and hasattr(i.owner, 'op'):
-                        if isinstance(i.owner.op,
-                                      theano.scan_module.scan_op.Scan):
-                            scan_ops.append(i)
+                if (
+                    hasattr(i, 'owner')
+                    and hasattr(i.owner, 'op')
+                    and isinstance(i.owner.op, theano.scan_module.scan_op.Scan)
+                ):
+                    scan_ops.append(i)
 
-                    debugprint(
-                        i, new_prefix, depth=depth - 1, done=done,
-                        print_type=print_type, file=file, order=order,
-                        ids=ids, stop_on_name=stop_on_name,
-                        prefix_child=new_prefix_child, scan_ops=scan_ops,
-                        profile=profile,
-                        scan_inner_to_outer_inputs=scan_inner_to_outer_inputs,
-                        smap=smap)
+                debugprint(
+                    i, new_prefix, depth=depth - 1, done=done,
+                    print_type=print_type, file=file, order=order,
+                    ids=ids, stop_on_name=stop_on_name,
+                    prefix_child=new_prefix_child, scan_ops=scan_ops,
+                    profile=profile,
+                    scan_inner_to_outer_inputs=scan_inner_to_outer_inputs,
+                    smap=smap)
     else:
         if scan_inner_to_outer_inputs is not None and\
            r in scan_inner_to_outer_inputs:
@@ -696,17 +679,14 @@ def debugprint(r, prefix='', depth=-1, done=None, print_type=False,
                 outer_id_str = get_id_str(outer_r.owner)
             else:
                 outer_id_str = get_id_str(outer_r)
-            print('%s%s %s%s -> %s' % (prefix, r, id_str, type_str,
-                                       outer_id_str), file=file)
+            print(f'{prefix}{r} {id_str}{type_str} -> {outer_id_str}', file=file)
         else:
             # this is an input variable
             data = ""
             if smap:
                 data = " " + str(smap.get(r, ''))
             id_str = get_id_str(r)
-            print('%s%s %s%s%s' % (prefix, r, id_str,
-                                   type_str, data),
-                  file=file)
+            print(f'{prefix}{r} {id_str}{type_str}{data}', file=file)
 
     return file
 
@@ -854,24 +834,21 @@ def _check_inputs(node, storage_map, r_vals, dr_vals, active_nodes,
 
     for r_idx, r in enumerate(node.inputs):
         if not r.type.values_eq(r_vals[r], storage_map[r][0]):
-            # some input node 'r' got changed by running the node
-            # this may or may not be ok...
-            if r in destroyed_res_list:
-                # ok, we expected r to be destroyed
-                if node in active_nodes:
-                    if dr_vals.get(r, (0, node))[1] is not node:
-                        # bad: there should only be one active node
-                        # that destroys any variable
-                        raise Exception('failure in topological ordering')
-                    if clobber_dr_vals:
-                        # no copy, this is the last use of this variable
-                        dr_vals[r] = (storage_map[r][0], node)
-                    # make sure that dr_vals[r] doens't get used again
-                    storage_map[r][0] = data_destroyed
-            else:
+            if r not in destroyed_res_list:
                 raise BadDestroyMap(node, r_idx, r_vals[r],
                                     storage_map[r][0], perform)
 
+            # ok, we expected r to be destroyed
+            if node in active_nodes:
+                if dr_vals.get(r, (0, node))[1] is not node:
+                    # bad: there should only be one active node
+                    # that destroys any variable
+                    raise Exception('failure in topological ordering')
+                if clobber_dr_vals:
+                    # no copy, this is the last use of this variable
+                    dr_vals[r] = (storage_map[r][0], node)
+                # make sure that dr_vals[r] doens't get used again
+                storage_map[r][0] = data_destroyed
     return actually_inplace_outputs
 
 
@@ -914,8 +891,7 @@ def _check_viewmap(node, storage_map):
                 bad_alias[nodeid] = ii
 
                 # check that the aliasing was declared in [view|destroy]_map
-                if ([ii] == view_map.get(oi, None) or
-                        [ii] == destroy_map.get(oi, None)):
+                if [ii] in [view_map.get(oi, None), destroy_map.get(oi, None)]:
 
                     good_alias[nodeid] = bad_alias.pop(nodeid)
 
@@ -953,7 +929,7 @@ def _is_used_in_graph(var):
         True if `var` is used by another node in the graph.
 
     """
-    return not(var.clients == [('output', 1)] or var.clients == [])
+    return var.clients not in [[('output', 1)], []]
 
 
 def _check_strides_match(a, b, warn_err, op):
@@ -1030,7 +1006,7 @@ def _find_bad_optimizations0(order, reasons, r_vals):
     # iterate over variables looking for values that don't match the
     # values of the variables they replaced.  This is the sign of a
     # broken optimization.
-    for i, node in enumerate(order):
+    for node in order:
         for new_r in node.outputs:
             for reason, r, old_graph_str, new_graph_str in reasons[new_r]:
                 # check if the value for new_r doesn't match the value for r
@@ -1067,10 +1043,9 @@ def _find_bad_optimizations1(order, reasons, r_vals):
     for i, node in enumerate(order):
         program_position[node] = i
         for new_r in node.outputs:
-            equivalence_sets.setdefault(new_r, set([new_r]))
+            equivalence_sets.setdefault(new_r, {new_r})
             for reason, r, old_graph_str, new_graph_str in reasons[new_r]:
-                equivalence_sets[new_r].update(equivalence_sets.setdefault(
-                    r, set([r])))
+                equivalence_sets[new_r].update(equivalence_sets.setdefault(r, {r}))
                 for er in equivalence_sets[r]:
                     equivalence_sets[er] = equivalence_sets[new_r]
 
@@ -1096,7 +1071,7 @@ def _find_bad_optimizations1(order, reasons, r_vals):
     if there_is_a_problem:
         # which broken equivalence set has the earliest-occurring element?
         first_broken_set = None
-        for i, node in enumerate(order):
+        for node in order:
             for r in node.outputs:
                 r_equiv = equivalence_sets[r]
                 if equivalence_sets_broken[id(r_equiv)]:

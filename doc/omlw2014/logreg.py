@@ -36,7 +36,7 @@ predict = theano.function(inputs=[x], outputs=prediction,
                           name='predict')
 
 # Train
-for i in range(training_steps):
+for _ in range(training_steps):
     pred, err = train(D[0], D[1])
 
 print("Final model:")

@@ -45,15 +45,14 @@ class TestNnet(unittest.TestCase):
         rng = numpy.random.RandomState(1827)
         data = rng.rand(10, 4)
         nnet = NNet(n_input=3, n_hidden=10)
-        for epoch in range(3):
+        for _ in range(3):
             mean_cost = 0
             for x in data:
-                input = x[0:3]
+                input = x[:3]
                 target = x[3:]
                 output, cost = nnet.sgd_step(input, target)
                 mean_cost += cost
             mean_cost /= float(len(data))
-            # print 'Mean cost at epoch %s: %s' % (epoch, mean_cost)
         self.assertTrue(abs(mean_cost - 0.20588975452) < 1e-6)
         # Just call functions to make sure they do not crash.
         out = nnet.compute_output(input)

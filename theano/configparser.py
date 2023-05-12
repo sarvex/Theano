@@ -20,8 +20,8 @@ _logger = logging.getLogger('theano.configparser')
 
 class TheanoConfigWarning(Warning):
 
-    def warn(cls, message, stacklevel=0):
-        warnings.warn(message, cls, stacklevel=stacklevel + 3)
+    def warn(self, message, stacklevel=0):
+        warnings.warn(message, self, stacklevel=stacklevel + 3)
     warn = classmethod(warn)
 
 THEANO_FLAGS = os.getenv("THEANO_FLAGS", "")
@@ -46,9 +46,9 @@ def parse_config_string(config_string, issue_warnings=True):
         if len(kv_tuple) == 1:
             if issue_warnings:
                 TheanoConfigWarning.warn(
-                    ("Config key '%s' has no value, ignoring it"
-                        % kv_tuple[0]),
-                    stacklevel=1)
+                    f"Config key '{kv_tuple[0]}' has no value, ignoring it",
+                    stacklevel=1,
+                )
         else:
             k, v = kv_tuple
             # subsequent values for k will override earlier ones
@@ -137,9 +137,7 @@ def fetch_val_for_key(key, delete_key=False):
 
     # first try to find it in the FLAGS
     try:
-        if delete_key:
-            return THEANO_FLAGS_DICT.pop(key)
-        return THEANO_FLAGS_DICT[key]
+        return THEANO_FLAGS_DICT.pop(key) if delete_key else THEANO_FLAGS_DICT[key]
     except KeyError:
         pass
 
@@ -150,10 +148,7 @@ def fetch_val_for_key(key, delete_key=False):
     if len(key_tokens) > 2:
         raise KeyError(key)
 
-    if len(key_tokens) == 2:
-        section, option = key_tokens
-    else:
-        section, option = 'global', key
+    section, option = key_tokens if len(key_tokens) == 2 else ('global', key)
     try:
         try:
             return theano_cfg.get(section, option)
@@ -183,8 +178,11 @@ def get_config_md5():
     """
     all_opts = sorted([c for c in _config_var_list if c.in_c_key],
                       key=lambda cv: cv.fullname)
-    return theano.gof.utils.hash_from_code('\n'.join(
-        ['%s = %s' % (cv.fullname, cv.__get__(True, None)) for cv in all_opts]))
+    return theano.gof.utils.hash_from_code(
+        '\n'.join(
+            [f'{cv.fullname} = {cv.__get__(True, None)}' for cv in all_opts]
+        )
+    )
 
 
 class TheanoConfigParser(object):
@@ -316,10 +314,7 @@ class ConfigParam(object):
                                             delete_key=delete_key)
                 self.is_default = False
             except KeyError:
-                if callable(self.default):
-                    val_str = self.default()
-                else:
-                    val_str = self.default
+                val_str = self.default() if callable(self.default) else self.default
             self.__set__(cls, val_str)
         # print "RVAL", self.val
         return self.val
@@ -330,10 +325,7 @@ class ConfigParam(object):
                 "Can't change the value of this config parameter "
                 "after initialization!")
         # print "SETTING PARAM", self.fullname,(cls), val
-        if self.filter:
-            self.val = self.filter(val)
-        else:
-            self.val = val
+        self.val = self.filter(val) if self.filter else val
 
 
 class EnumStr(ConfigParam):
@@ -363,7 +355,7 @@ class EnumStr(ConfigParam):
         super(EnumStr, self).__init__(default, filter, over)
 
     def __str__(self):
-        return '%s (%s) ' % (self.fullname, self.all)
+        return f'{self.fullname} ({self.all}) '
 
 
 class TypedParam(ConfigParam):
@@ -386,7 +378,7 @@ class TypedParam(ConfigParam):
                                          allow_override=allow_override)
 
     def __str__(self):
-        return '%s (%s) ' % (self.fullname, self.mytype)
+        return f'{self.fullname} ({self.mytype}) '
 
 
 def StrParam(default, is_valid=None, allow_override=True):
@@ -411,10 +403,7 @@ def BoolParam(default, is_valid=None, allow_override=True):
             return True
 
     def is_valid_bool(s):
-        if s in ['False', 'false', '0', 'True', 'true', '1', False, True]:
-            return True
-        else:
-            return False
+        return s in ['False', 'false', '0', 'True', 'true', '1', False, True]
 
     if is_valid is None:
         is_valid = is_valid_bool

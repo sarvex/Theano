@@ -114,11 +114,7 @@ def _contains_cycle(fgraph, orderings):
     # node_to_children
     for var in fgraph.variables:
 
-        # this is faster than calling get_parents
-        owner = var.owner
-        # variables don't appear in orderings, so we don't need to worry
-        # about that here
-        if owner:
+        if owner := var.owner:
             # insert node in node_to_children[r]
             # (if r is not already in node_to_children,
             # intialize it to [])
@@ -200,8 +196,7 @@ def _build_droot_impact(destroy_handler):
             input_root = r
 
             if input_root in droot:
-                raise InconsistencyError(
-                    "Multiple destroyers of %s" % input_root)
+                raise InconsistencyError(f"Multiple destroyers of {input_root}")
             droot[input_root] = input_root
             root_destroyer[input_root] = app
 
@@ -396,11 +391,11 @@ if 0:
                 self.view_o.setdefault(i, OrderedSet()).add(o)
 
             # update self.clients
-            for i, input in enumerate(app.inputs):
+            for input in app.inputs:
                 self.clients.setdefault(input, {}).setdefault(app, 0)
                 self.clients[input][app] += 1
 
-            for i, output in enumerate(app.outputs):
+            for output in app.outputs:
                 self.clients.setdefault(output, {})
 
             self.stale_droot = True
@@ -414,7 +409,7 @@ if 0:
             # self.debug_all_apps.remove(app)
 
             # UPDATE self.clients
-            for i, input in enumerate(OrderedSet(app.inputs)):
+            for input in OrderedSet(app.inputs):
                 del self.clients[input][app]
 
             if getattr(app.op, 'destroy_map', {}):
@@ -445,11 +440,7 @@ if 0:
             app.inputs[i] changed from old_r to new_r.
 
             """
-            if app == 'output':
-                # app == 'output' is special key that means FunctionGraph is redefining which nodes are being
-                # considered 'outputs' of the graph.
-                pass
-            else:
+            if app != 'output':
                 # if app not in self.debug_all_apps: raise ProtocolError("change without import")
 
                 # UPDATE self.clients
@@ -467,11 +458,11 @@ if 0:
                         # destroying this output invalidates multiple inputs
                         raise NotImplementedError()
                     i_idx = i_idx_list[0]
-                    output = app.outputs[o_idx]
                     if i_idx == i:
                         if app.inputs[i_idx] is not new_r:
                             raise ProtocolError("wrong new_r on change")
 
+                        output = app.outputs[o_idx]
                         self.view_i[output] = new_r
 
                         self.view_o[old_r].remove(output)
@@ -497,10 +488,6 @@ if 0:
                 if _contains_cycle(fgraph, ords):
                     raise InconsistencyError(
                         "Dependency graph contains cycles")
-            else:
-                # James's Conjecture:
-                # If there are no destructive ops, then there can be no cycles.
-                pass
             return True
 
         def orderings(self, fgraph):
@@ -521,16 +508,16 @@ if 0:
 
                 droot, impact, __ignore = self.refresh_droot_impact()
 
-                # check for destruction of constants
-                illegal_destroy = [
-                    r for r in droot if
-                    getattr(r.tag, 'indestructible', False) or
-                    isinstance(r, graph.Constant)]
-                if illegal_destroy:
+                if illegal_destroy := [
+                    r
+                    for r in droot
+                    if getattr(r.tag, 'indestructible', False)
+                    or isinstance(r, graph.Constant)
+                ]:
                     # print 'destroying illegally'
                     raise InconsistencyError(
-                        "Attempting to destroy indestructible variables: %s" %
-                        illegal_destroy)
+                        f"Attempting to destroy indestructible variables: {illegal_destroy}"
+                    )
 
                 # add destroyed variable clients as computational dependencies
                 for app in self.destroyers:
@@ -595,7 +582,7 @@ if 0:
                             if i in ignored:
                                 continue
                             if input in root_impact \
-                                    and (i not in tolerated or input is not destroyed_variable):
+                                            and (i not in tolerated or input is not destroyed_variable):
                                 raise InconsistencyError("Input aliasing: %s (%i, %i)"
                                                          % (app, destroyed_idx, i))
 
@@ -802,11 +789,11 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
             self.view_o.setdefault(i, OrderedSet()).add(o)
 
         # update self.clients
-        for i, input in enumerate(app.inputs):
+        for input in app.inputs:
             self.clients.setdefault(input, OrderedDict()).setdefault(app, 0)
             self.clients[input][app] += 1
 
-        for i, output in enumerate(app.outputs):
+        for output in app.outputs:
             self.clients.setdefault(output, OrderedDict())
 
         self.stale_droot = True
@@ -821,7 +808,7 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
         self.debug_all_apps.remove(app)
 
         # UPDATE self.clients
-        for i, input in enumerate(OrderedSet(app.inputs)):
+        for input in OrderedSet(app.inputs):
             del self.clients[input][app]
 
         if getattr(app.op, 'destroy_map', OrderedDict()):
@@ -853,11 +840,7 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
         app.inputs[i] changed from old_r to new_r.
 
         """
-        if app == 'output':
-            # app == 'output' is special key that means FunctionGraph is redefining which nodes are being
-            # considered 'outputs' of the graph.
-            pass
-        else:
+        if app != 'output':
             if app not in self.debug_all_apps:
                 raise ProtocolError("change without import")
 
@@ -876,11 +859,11 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
                     # destroying this output invalidates multiple inputs
                     raise NotImplementedError()
                 i_idx = i_idx_list[0]
-                output = app.outputs[o_idx]
                 if i_idx == i:
                     if app.inputs[i_idx] is not new_r:
                         raise ProtocolError("wrong new_r on change")
 
+                    output = app.outputs[o_idx]
                     self.view_i[output] = new_r
 
                     self.view_o[old_r].remove(output)
@@ -905,18 +888,6 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
 
             if _contains_cycle(fgraph, ords):
                 raise InconsistencyError("Dependency graph contains cycles")
-        else:
-            # James's Conjecture:
-            # If there are no destructive ops, then there can be no cycles.
-
-            # FB: This isn't always True. It can happend that
-            # optimization introduce node that depend on itself. This
-            # is very rare and should not happen in general. It will be
-            # caught later. The error will be far from the source. But
-            # doing this conjecture should speed up compilation most of
-            # the time. The user should create such dependency except
-            # if he mess too much with the internal.
-            pass
         return True
 
     def orderings(self, fgraph):
@@ -937,14 +908,15 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
 
             droot, impact, __ignore = self.refresh_droot_impact()
 
-            # check for destruction of constants
-            illegal_destroy = [r for r in droot if
-                               getattr(r.tag, 'indestructible', False) or
-                               isinstance(r, graph.Constant)]
-            if illegal_destroy:
+            if illegal_destroy := [
+                r
+                for r in droot
+                if getattr(r.tag, 'indestructible', False)
+                or isinstance(r, graph.Constant)
+            ]:
                 raise InconsistencyError(
-                    "Attempting to destroy indestructible variables: %s" %
-                    illegal_destroy)
+                    f"Attempting to destroy indestructible variables: {illegal_destroy}"
+                )
 
             # add destroyed variable clients as computational dependencies
             for app in self.destroyers:
@@ -1006,7 +978,7 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
                         if i in ignored:
                             continue
                         if input in root_impact \
-                                and (i not in tolerated or
+                                    and (i not in tolerated or
                                      input is not destroyed_variable):
                             raise InconsistencyError("Input aliasing: %s (%i, %i)"
                                                      % (app, destroyed_idx, i))

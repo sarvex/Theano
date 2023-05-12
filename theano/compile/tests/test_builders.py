@@ -29,8 +29,8 @@ class T_OpFromGraph(unittest_tools.InferShapeTester):
         # print function, function.__module__
         # print fn.maker.fgraph.toposort()
         fn(xv, yv, zv)
-        assert numpy.all(8.0 == fn(xv, yv, zv))
-        assert numpy.all(8.0 == fn(xv, yv, zv))
+        assert numpy.all(fn(xv, yv, zv) == 8.0)
+        assert numpy.all(fn(xv, yv, zv) == 8.0)
 
     def test_size_changes(self):
         x, y, z = T.matrices('xyz')
@@ -43,10 +43,10 @@ class T_OpFromGraph(unittest_tools.InferShapeTester):
         zv = numpy.ones((4, 5), dtype=config.floatX)*5
         res = fn(xv, yv, zv)
         assert res.shape == (2, 5)
-        assert numpy.all(180.0 == res)
+        assert numpy.all(res == 180.0)
         res = fn(xv, yv, zv)
         assert res.shape == (2, 5)
-        assert numpy.all(180.0 == res)
+        assert numpy.all(res == 180.0)
 
     def test_grad(self):
         x, y, z = T.matrices('xyz')
@@ -58,7 +58,7 @@ class T_OpFromGraph(unittest_tools.InferShapeTester):
         xv = numpy.ones((2, 2), dtype=config.floatX)
         yv = numpy.ones((2, 2), dtype=config.floatX)*3
         zv = numpy.ones((2, 2), dtype=config.floatX)*5
-        assert numpy.all(11.0 == fn(xv, yv, zv))
+        assert numpy.all(fn(xv, yv, zv) == 11.0)
 
     def test_grad_grad(self):
         x, y, z = T.matrices('xyz')

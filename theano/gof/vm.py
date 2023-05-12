@@ -26,9 +26,7 @@ logger = logging.getLogger(__name__)
 def calculate_reallocate_info(order, fgraph, storage_map, compute_map_re,
                               dependencies):
     reallocated_info = {}
-    viewed_by = {}
-    for var in fgraph.variables:
-        viewed_by[var] = []
+    viewed_by = {var: [] for var in fgraph.variables}
     view_of = {}
     pre_allocated = set([])
     allocated = set([])
@@ -38,8 +36,7 @@ def calculate_reallocate_info(order, fgraph, storage_map, compute_map_re,
         dmap = getattr(node.op, 'destroy_map', None)
         vmap = getattr(node.op, 'view_map', None)
 
-        idx_o = 0
-        for out in node.outputs:
+        for idx_o, out in enumerate(node.outputs):
             for var in node.outputs:
                 compute_map_re[var][0] = 1
             ins = None
@@ -59,15 +56,18 @@ def calculate_reallocate_info(order, fgraph, storage_map, compute_map_re,
                 origin = view_of.get(ins, ins)
                 view_of[out] = origin
                 viewed_by[origin].append(out)
-            idx_o += 1
-
         for ins in node.inputs:
             assert not (ins in view_of and viewed_by[ins])
-            if (getattr(ins, 'ndim', None) == 0 and not storage_map[ins][0] and
-                    ins not in fgraph.outputs and ins.owner and
-                    all([compute_map_re[v][0]
-                         for v in dependencies.get(ins, [])]) and
-                    ins not in allocated):
+            if (
+                getattr(ins, 'ndim', None) == 0
+                and not storage_map[ins][0]
+                and ins not in fgraph.outputs
+                and ins.owner
+                and all(
+                    compute_map_re[v][0] for v in dependencies.get(ins, [])
+                )
+                and ins not in allocated
+            ):
                 # Constant Memory cannot be changed
                 # Constant and shared variables' storage_map value is not empty
                 reuse_out = None
@@ -81,7 +81,7 @@ def calculate_reallocate_info(order, fgraph, storage_map, compute_map_re,
                                     out not in pre_allocated and
                                     ins.type == out.type):
                                 reuse_out = out
-                                pre_allocated.add(out)
+                                pre_allocated.add(reuse_out)
                                 allocated.add(ins)
                                 break
                 elif ins in view_of:
@@ -100,7 +100,7 @@ def calculate_reallocate_info(order, fgraph, storage_map, compute_map_re,
                                         out not in pre_allocated and
                                         ins.type == out.type):
                                     reuse_out = out
-                                    pre_allocated.add(out)
+                                    pre_allocated.add(reuse_out)
                                     allocated.add(ins)
                                     break
                 if reuse_out is not None:
@@ -228,8 +228,6 @@ class Loop(VM):
 
     def __call__(self):
         if self.time_thunks:
-            for cont in self.pre_call_clear:
-                cont[0] = None
             try:
                 for i, (thunk, node) in enumerate(zip(self.thunks,
                                                       self.nodes)):
@@ -241,13 +239,14 @@ class Loop(VM):
             except:
                 link.raise_with_op(node, thunk)
         else:
-            for cont in self.pre_call_clear:
-                cont[0] = None
             try:
                 for thunk, node in zip(self.thunks, self.nodes):
                     thunk()
             except:
                 link.raise_with_op(node, thunk)
+
+        for cont in self.pre_call_clear:
+            cont[0] = None
 
 
 class LoopGC(VM):
@@ -267,8 +266,6 @@ class LoopGC(VM):
 
     def __call__(self):
         if self.time_thunks:
-            for cont in self.pre_call_clear:
-                cont[0] = None
             try:
                 i = 0
                 for thunk, node, old_storage in zip(self.thunks,
@@ -285,8 +282,6 @@ class LoopGC(VM):
             except:
                 link.raise_with_op(node, thunk)
         else:
-            for cont in self.pre_call_clear:
-                cont[0] = None
             try:
                 for thunk, node, old_storage in zip(self.thunks, self.nodes,
                                                     self.post_thunk_clear):
@@ -295,6 +290,9 @@ class LoopGC(VM):
                         old_s[0] = None
             except:
                 link.raise_with_op(node, thunk)
+
+        for cont in self.pre_call_clear:
+            cont[0] = None
 
 
 class Stack(VM):
@@ -501,40 +499,40 @@ class Stack(VM):
                         for i in current_apply.inputs:
                             # Garbage Collection -> check if anybody else uses
                             # this input
-                            if (dependencies[i] and
-                                    i.owner and
-                                    i not in self.outputs):
-                                if all(compute_map[v][0]
-                                        for v in dependencies[i]):
-                                    storage_map[i][0] = None
-                                    input_index.append(
-                                        current_apply.inputs.index(i))
+                            if (
+                                dependencies[i]
+                                and i.owner
+                                and i not in self.outputs
+                            ) and all(compute_map[v][0] for v in dependencies[i]):
+                                storage_map[i][0] = None
+                                input_index.append(
+                                    current_apply.inputs.index(i))
 
-                                    # DO NOT set compute_map to 0
+                                # DO NOT set compute_map to 0
 
-                                    # If values become False and the
-                                    # current_apply is still in the
-                                    # stack, this will cause it to be
-                                    # recomputed! This can cause wrong value
-                                    # with some combination of inplace op.
-                                    compute_map[i][0] = 2
-                                    if (config.warn.vm_gc_bug and
-                                        current_apply in apply_stack and
-                                        getattr(current_apply.op,
-                                                'destroy_map',
-                                                False)):
-                                        warnings.warn(
-                                            "There was a bug that existed in "
-                                            "the default Theano configuration,"
-                                            " only in the development version "
-                                            "between July 5th 2012 and "
-                                            "July 30th 2012. This was not in "
-                                            "a released version. The bug was "
-                                            "affecting this script.",
-                                            # The stack level is not good when
-                                            # inside a Scan.
-                                            stacklevel=3
-                                        )
+                                # If values become False and the
+                                # current_apply is still in the
+                                # stack, this will cause it to be
+                                # recomputed! This can cause wrong value
+                                # with some combination of inplace op.
+                                compute_map[i][0] = 2
+                                if (config.warn.vm_gc_bug and
+                                    current_apply in apply_stack and
+                                    getattr(current_apply.op,
+                                            'destroy_map',
+                                            False)):
+                                    warnings.warn(
+                                        "There was a bug that existed in "
+                                        "the default Theano configuration,"
+                                        " only in the development version "
+                                        "between July 5th 2012 and "
+                                        "July 30th 2012. This was not in "
+                                        "a released version. The bug was "
+                                        "affecting this script.",
+                                        # The stack level is not good when
+                                        # inside a Scan.
+                                        stacklevel=3
+                                    )
                     self.node_cleared_order.append(input_index)
 
                 elif not computed_ins:
@@ -601,11 +599,7 @@ class Stack(VM):
                         for i in current_apply.inputs:
                             if (dependencies[i] and i.owner and
                                     i not in self.outputs):
-                                empty_storage_map = True
-                                for x in dependencies[i]:
-                                    if not compute_map[x][0]:
-                                        empty_storage_map = False
-                                        break
+                                empty_storage_map = all(compute_map[x][0] for x in dependencies[i])
                                 if empty_storage_map:
                                     storage_map[i][0] = None
                                     input_index.append(
@@ -623,13 +617,10 @@ class Stack(VM):
 
         if self.allow_gc:
             for v in storage_map:
-                if v.owner and v not in self.outputs:
-                    if compute_map[v][0] == 2:
-                        continue
-                    else:
-                        storage_map[v][0] = None
-                        final_index.append(v)
-                        compute_map[v][0] = 2
+                if v.owner and v not in self.outputs and compute_map[v][0] != 2:
+                    storage_map[v][0] = None
+                    final_index.append(v)
+                    compute_map[v][0] = 2
 
         self.node_cleared_order.append(final_index)
 
@@ -716,18 +707,19 @@ class VM_Linker(link.LocalLinker):
         associated to self, else, a new VM_Linker associated to fgraph.
 
         """
-        if (config.profile and
-                hasattr(theano, 'sandbox') and
-                hasattr(theano.sandbox, 'cuda') and
-                theano.sandbox.cuda.cuda_enabled):
-            if os.environ.get('CUDA_LAUNCH_BLOCKING', '0') != '1':
-                raise Exception(
-                    "You are running the Theano profiler with CUDA enabled."
-                    " Theano GPU ops execution is asynchronous by default."
-                    " So by default, the profile is useless."
-                    " You must set the environment variable"
-                    " CUDA_LAUNCH_BLOCKING to 1 to tell the CUDA driver to"
-                    " synchronize the execution to get a meaningful profile.")
+        if (
+            config.profile
+            and hasattr(theano, 'sandbox')
+            and hasattr(theano.sandbox, 'cuda')
+            and theano.sandbox.cuda.cuda_enabled
+        ) and os.environ.get('CUDA_LAUNCH_BLOCKING', '0') != '1':
+            raise Exception(
+                "You are running the Theano profiler with CUDA enabled."
+                " Theano GPU ops execution is asynchronous by default."
+                " So by default, the profile is useless."
+                " You must set the environment variable"
+                " CUDA_LAUNCH_BLOCKING to 1 to tell the CUDA driver to"
+                " synchronize the execution to get a meaningful profile.")
 
         if no_recycling is None:
             no_recycling = []

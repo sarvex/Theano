@@ -8,13 +8,13 @@ try:
     ker_shape =  int(sys.argv[3]), int(sys.argv[4])
     dtype = sys.argv[5]
 except:
-    print("Usage: %s <img rows> <img cols> <ker rows> <ker cols> <dtype> [nb_call]" % sys.argv[0], file=sys.stderr)
+    print(
+        f"Usage: {sys.argv[0]} <img rows> <img cols> <ker rows> <ker cols> <dtype> [nb_call]",
+        file=sys.stderr,
+    )
     sys.exit(-1)
 
-nb_call = 1
-if len(sys.argv)>6:
-    nb_call=int(sys.argv[6])
-
+nb_call = int(sys.argv[6]) if len(sys.argv)>6 else 1
 T = timeit.Timer("f()","""
 import scikits.image.opencv, sys, numpy
 img_shape =  int(sys.argv[1]), int(sys.argv[2])

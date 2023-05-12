@@ -55,19 +55,13 @@ def format_as(use_list, use_tuple, outputs):
     assert not (use_list and use_tuple), \
         "Both flags cannot be simultaneously True"
     if (use_list or use_tuple) and not isinstance(outputs, (list, tuple)):
-        if use_list:
-            return [outputs]
-        else:
-            return (outputs,)
-    elif not (use_list or use_tuple) and isinstance(outputs, (list, tuple)):
+        return [outputs] if use_list else (outputs, )
+    elif not use_list and not use_tuple and isinstance(outputs, (list, tuple)):
         assert len(outputs) == 1, \
             "Wrong arguments. Expected a one element list"
         return outputs[0]
     elif use_list or use_tuple:
-        if use_list:
-            return list(outputs)
-        else:
-            return tuple(outputs)
+        return list(outputs) if use_list else tuple(outputs)
     else:
         return outputs
 
@@ -139,10 +133,10 @@ class DisconnectedType(theano.gof.type.Type):
                 " a symbolic placeholder."
             ))
 
-    def may_share_memory(a, b):
+    def may_share_memory(self, b):
         return False
 
-    def value_eq(a, b, force_same_dtype=True):
+    def value_eq(self, b, force_same_dtype=True):
         raise AssertionError(
             (
                 "If you're assigning to a DisconnectedType you're"
@@ -423,9 +417,8 @@ def grad(cost, wrt, consider_constant=None,
     if tensor is None:
         from theano import tensor
 
-    if cost is None:
-        if known_grads is None:
-            raise AssertionError("cost and known_grads can't both be None.")
+    if cost is None and known_grads is None:
+        raise AssertionError("cost and known_grads can't both be None.")
 
     if cost is not None and isinstance(cost.type, NullType):
         raise ValueError("Can't differentiate a NaN cost."
@@ -447,8 +440,9 @@ def grad(cost, wrt, consider_constant=None,
 
     for elem in wrt:
         if not isinstance(elem, Variable):
-            raise TypeError("Expected Variable, got " + str(elem) +
-                            " of type " + str(type(elem)))
+            raise TypeError(
+                f"Expected Variable, got {str(elem)} of type {str(type(elem))}"
+            )
 
     outputs = []
     if cost is not None:
@@ -467,10 +461,7 @@ def grad(cost, wrt, consider_constant=None,
 
     # The gradient of the cost is 1 unless specified otherwise by known_grads.
     if cost is not None:
-        if cost in known_grads:
-            g_cost = known_grads[cost]
-        else:
-            g_cost = _float_ones_like(cost)
+        g_cost = known_grads[cost] if cost in known_grads else _float_ones_like(cost)
         # g_cost may be Disconnected or NullType. A creative use of the
         # function, sure, but nonetheless one we can and should support.
         # So before we try to cast it make sure it even has a dtype
@@ -509,31 +500,31 @@ def grad(cost, wrt, consider_constant=None,
         grad_dict[var] = g_var
 
     def handle_disconnected(var):
-            message = ("grad method was asked to compute the gradient "
-                       "with respect to a variable that is not part of "
-                       "the computational graph of the cost, or is used "
-                       "only by a non-differentiable operator: %s" % var)
-            if disconnected_inputs == 'ignore':
-                pass
-            elif disconnected_inputs == 'warn':
-                warnings.warn(message, stacklevel=2)
-            elif disconnected_inputs == 'raise':
-                # Add the var trace
-                tr = getattr(var.tag, 'trace', [])
-                if len(tr) > 0:
-                    message += "\nBacktrace when the node is created:\n"
+        message = ("grad method was asked to compute the gradient "
+                   "with respect to a variable that is not part of "
+                   "the computational graph of the cost, or is used "
+                   "only by a non-differentiable operator: %s" % var)
+        if disconnected_inputs == 'ignore':
+            pass
+        elif disconnected_inputs == 'warn':
+            warnings.warn(message, stacklevel=2)
+        elif disconnected_inputs == 'raise':
+            # Add the var trace
+            tr = getattr(var.tag, 'trace', [])
+            if tr:
+                message += "\nBacktrace when the node is created:\n"
 
-                    # Print separate message for each element in the list of batcktraces
-                    sio = StringIO()
-                    for subtr in tr:
-                        traceback.print_list(subtr, sio)
-                    message += str(sio.getvalue())
+                # Print separate message for each element in the list of batcktraces
+                sio = StringIO()
+                for subtr in tr:
+                    traceback.print_list(subtr, sio)
+                message += str(sio.getvalue())
 
-                raise DisconnectedInputError(message)
-            else:
-                raise ValueError("Invalid value for keyword "
-                                 "'disconnected_inputs', valid values are "
-                                 "'ignore', 'warn' and 'raise'.")
+            raise DisconnectedInputError(message)
+        else:
+            raise ValueError("Invalid value for keyword "
+                             "'disconnected_inputs', valid values are "
+                             "'ignore', 'warn' and 'raise'.")
 
     # variables that do not influence the cost have zero gradient.
     # if wrt is such a variable, populate the grad_dict with this info
@@ -722,8 +713,8 @@ def subgraph_grad(wrt, end, start=None, cost=None, details=False):
 
     pgrads = OrderedDict(izip(params, grads))
     # separate wrt from end grads:
-    wrt_grads = list(pgrads[k] for k in wrt)
-    end_grads = list(pgrads[k] for k in end)
+    wrt_grads = [pgrads[k] for k in wrt]
+    end_grads = [pgrads[k] for k in end]
 
     if details:
         return wrt_grads, end_grads, start_grads, cost_grads
@@ -743,10 +734,11 @@ def _node_to_pattern(node):
 
         if not isinstance(connection_pattern, list):
             raise TypeError(
-                "Op.connection_pattern should return " +
-                ("list of list of bool, but for Op=%s" % node.op) +
-                "got %s with type %s." % (connection_pattern,
-                                          type(connection_pattern)))
+                (
+                    f"Op.connection_pattern should return list of list of bool, but for Op={node.op}"
+                    + f"got {connection_pattern} with type {type(connection_pattern)}."
+                )
+            )
         if len(connection_pattern) != len(node.inputs):
             raise ValueError(
                 '%s.connection_pattern should have %d' %
@@ -755,13 +747,16 @@ def _node_to_pattern(node):
         for ii, output_pattern in enumerate(connection_pattern):
             if not isinstance(output_pattern, list):
                 raise TypeError(
-                    '%s.connection_pattern should return' %
-                    node.op + ' a list of lists, but element %d' % ii +
-                    'is %s of type %s.' % (output_pattern,
-                                           type(output_pattern)))
+                    (
+                        (
+                            f'{node.op}.connection_pattern should return'
+                            + ' a list of lists, but element %d' % ii
+                        )
+                        + f'is {output_pattern} of type {type(output_pattern)}.'
+                    )
+                )
     else:
-        connection_pattern = [[True for output in node.outputs]
-                              for ipt in node.inputs]
+        connection_pattern = [[True for _ in node.outputs] for _ in node.inputs]
     assert isinstance(connection_pattern, list)
     assert len(connection_pattern) == len(node.inputs)
     for ii in xrange(len(node.inputs)):
@@ -1037,9 +1032,7 @@ def _populate_grad_dict(var_to_app_to_idx,
                     dinputs = []
 
                 def try_to_copy_if_needed(var):
-                    if var in dinputs and hasattr(var, 'copy'):
-                        return var.copy()
-                    return var
+                    return var.copy() if var in dinputs and hasattr(var, 'copy') else var
 
                 inputs = [try_to_copy_if_needed(ipt) for ipt in inputs]
 
@@ -1119,10 +1112,6 @@ def _populate_grad_dict(var_to_app_to_idx,
                 if len(input_grads) != len(inputs):
                     raise ValueError(("%s returned the wrong number of" +
                                       " gradient terms.") % str(node.op))
-# We can not enforce this, as AdvancedSubtensor1 has an option to
-# return the sparse grad for optimization reason.
-
-                    #            for ig, i in zip(input_grads, inputs):
 #                if (not isinstance(ig.type, (DisconnectedType, NullType)) and
 #                    type(ig.type) != type(i.type)):
 #                    raise ValueError(
@@ -1216,8 +1205,12 @@ def _populate_grad_dict(var_to_app_to_idx,
                             msg += "simplify it to a constant, so it's not "
                             msg += "verifiably zeros."
 
-                            msg = msg % (str(node.op), str(term),
-                                         str(type(term)), i)
+                            msg %= (
+                                str(node.op),
+                                str(term),
+                                str(type(term)),
+                                i,
+                            )
 
                         if is_zero == 'no':
                             msg = "%s.grad returned %s of type %s for input"
@@ -1244,13 +1237,13 @@ def _populate_grad_dict(var_to_app_to_idx,
                     msg += " Expected DisconnectedType instance based on "
                     msg += " the output of the op's connection_pattern "
                     msg += "method."
-                    msg = msg % (str(node.op), str(ig), str(ig.type), i)
+                    msg %= (str(node.op), str(ig), str(ig.type), i)
                     raise TypeError(msg)
 
                 if connected and not actually_connected:
                     msg = "%s.grad returned DisconnectedType for input"
                     msg += " %d."
-                    msg = msg % (str(node.op), i)
+                    msg %= (str(node.op), i)
                     if hasattr(node.op, 'connection_pattern'):
                         msg += ' Its connection_pattern method does not'
                         msg += ' allow this.'
@@ -1301,7 +1294,7 @@ def _populate_grad_dict(var_to_app_to_idx,
                         terms.append(term)
 
                 # Add up the terms to get the total gradient on this variable
-                if len(null_terms) > 0:
+                if null_terms:
                     # At least one term is a NullType : the total gradient
                     # will also be a NullType
                     grad_dict[var] = null_terms[0]
@@ -1313,7 +1306,7 @@ def _populate_grad_dict(var_to_app_to_idx,
                     grad_dict[var] = disconnected_type()
 
                 if cost_name is not None and var.name is not None:
-                    grad_dict[var].name = '(d%s/d%s)' % (cost_name, var.name)
+                    grad_dict[var].name = f'(d{cost_name}/d{var.name})'
             else:
                 # this variable isn't connected to the cost in the
                 # computational graph
@@ -1660,7 +1653,7 @@ def verify_grad(fun, pt, n_tests=2, rng=None, eps=None,
     o_fn = function(tensor_pt, o_output, name='gradient.py fwd')
     o_fn_out = o_fn(*[p.copy() for p in pt])
 
-    if isinstance(o_fn_out, tuple) or isinstance(o_fn_out, list):
+    if isinstance(o_fn_out, (tuple, list)):
         raise TypeError(
             'It seems like you are trying to use verify_grad '
             'on an op or a function which outputs a list: there should'
@@ -1780,11 +1773,7 @@ def jacobian(expression, wrt, consider_constant=None,
     using_list = isinstance(wrt, list)
     using_tuple = isinstance(wrt, tuple)
 
-    if isinstance(wrt, (list, tuple)):
-        wrt = list(wrt)
-    else:
-        wrt = [wrt]
-
+    wrt = list(wrt) if isinstance(wrt, (list, tuple)) else [wrt]
     if expression.ndim == 0:
         # expression is just a scalar, use grad
         return format_as(using_list, using_tuple,
@@ -1804,6 +1793,7 @@ def jacobian(expression, wrt, consider_constant=None,
                         disconnected_inputs=disconnected_inputs)
             rvals.append(rval)
         return rvals
+
     # Computing the gradients does not affect the random seeds on any random
     # generator used n expression (because during computing gradients we are
     # just backtracking over old values. (rp Jan 2012 - if anyone has a
@@ -1853,11 +1843,7 @@ def hessian(cost, wrt, consider_constant=None,
     using_list = isinstance(wrt, list)
     using_tuple = isinstance(wrt, tuple)
 
-    if isinstance(wrt, (list, tuple)):
-        wrt = list(wrt)
-    else:
-        wrt = [wrt]
-
+    wrt = list(wrt) if isinstance(wrt, (list, tuple)) else [wrt]
     hessians = []
     for input in wrt:
         assert isinstance(input, Variable), \
@@ -1910,10 +1896,7 @@ def _is_zero(x):
     if no_constant_value:
         return 'maybe'
 
-    if constant_value != 0.:
-        return 'no'
-
-    return 'yes'
+    return 'no' if constant_value != 0. else 'yes'
 
 
 class ConsiderConstant(ViewOp):
@@ -1979,7 +1962,7 @@ def zero_grad(x):
 
 class DisconnectedGrad(ViewOp):
     def grad(self, args, g_outs):
-        return [disconnected_type() for g_out in g_outs]
+        return [disconnected_type() for _ in g_outs]
 
     def connection_pattern(self, node):
         return [[False]]

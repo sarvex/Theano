@@ -140,7 +140,7 @@ if not release:
     else:
         GIT_REVISION = "unknown-git"
 
-    FULL_VERSION += '.dev-' + GIT_REVISION
+    FULL_VERSION += f'.dev-{GIT_REVISION}'
     text = cnt % {'version': VERSION,
                   'full_version': FULL_VERSION,
                   'git_revision': GIT_REVISION,

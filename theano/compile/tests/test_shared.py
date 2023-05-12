@@ -81,10 +81,11 @@ class Test_SharedVariable(unittest.TestCase):
         # this is beyond strictness, it must fail
         try:
             SharedVariable(
-                    name='u',
-                    type=Tensor(broadcastable=[False], dtype='float64'),
-                    value=dict(),  # not an array by any stretch
-                    strict=False)
+                name='u',
+                type=Tensor(broadcastable=[False], dtype='float64'),
+                value={},
+                strict=False,
+            )
             assert 0
         except TypeError:
             pass

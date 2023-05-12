@@ -79,10 +79,7 @@ if sys.version_info[:2] < (2, 7):
         def popitem(self, last=True):
             if not self:
                 raise KeyError('dictionary is empty')
-            if last:
-                key = next(reversed(self))
-            else:
-                key = next(iter(self))
+            key = next(reversed(self)) if last else next(iter(self))
             value = self.pop(key)
             return key, value
 
@@ -110,7 +107,7 @@ if sys.version_info[:2] < (2, 7):
 
         def __repr__(self):
             if not self:
-                return '%s()' % (self.__class__.__name__,)
+                return f'{self.__class__.__name__}()'
             return '%s(%r)' % (self.__class__.__name__, list(self.items()))
 
         def copy(self):
@@ -127,10 +124,7 @@ if sys.version_info[:2] < (2, 7):
             if isinstance(other, OrderedDict):
                 if len(self) != len(other):
                     return False
-                for p, q in zip(self.items(), other.items()):
-                    if p != q:
-                        return False
-                return True
+                return all(p == q for p, q in zip(self.items(), other.items()))
             return dict.__eq__(self, other)
 
         def __ne__(self, other):
@@ -281,7 +275,7 @@ if sys.version_info[:2] < (2, 7):
 
         def __repr__(self):
             if not self:
-                return '%s()' % self.__class__.__name__
+                return f'{self.__class__.__name__}()'
             items = ', '.join(map('%r: %r'.__mod__, self.most_common()))
             return '%s({%s})' % (self.__class__.__name__, items)
 

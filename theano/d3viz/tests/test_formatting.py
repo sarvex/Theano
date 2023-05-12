@@ -21,17 +21,14 @@ class TestPyDotFormatter(unittest.TestCase):
         node_types = [node.get_attributes()['node_type']
                       for node in graph.get_nodes()]
         a, b = np.unique(node_types, return_counts=True)
-        nc = dict(zip(a, b))
-        return nc
+        return dict(zip(a, b))
 
     def test_mlp(self):
         m = models.Mlp()
         f = th.function(m.inputs, m.outputs)
         pdf = PyDotFormatter()
         graph = pdf(f)
-        expected = 11
-        if th.config.mode == "FAST_COMPILE":
-            expected = 12
+        expected = 12 if th.config.mode == "FAST_COMPILE" else 11
         self.assertEqual(len(graph.get_nodes()), expected)
         nc = self.node_counts(graph)
 

@@ -14,16 +14,42 @@ if os.path.exists(os.path.join(config.compiledir, 'cutils_ext.so')):
 
 
 def compile_cutils_code():
-    types = ['npy_' + t for t in ['int8', 'int16', 'int32', 'int64', 'int128',
-                                  'int256', 'uint8', 'uint16', 'uint32',
-                                  'uint64', 'uint128', 'uint256',
-                                  'float16', 'float32', 'float64',
-                                  'float80', 'float96', 'float128',
-                                  'float256']]
+    types = [
+        f'npy_{t}'
+        for t in [
+            'int8',
+            'int16',
+            'int32',
+            'int64',
+            'int128',
+            'int256',
+            'uint8',
+            'uint16',
+            'uint32',
+            'uint64',
+            'uint128',
+            'uint256',
+            'float16',
+            'float32',
+            'float64',
+            'float80',
+            'float96',
+            'float128',
+            'float256',
+        ]
+    ]
 
-    complex_types = ['npy_' + t for t in ['complex32', 'complex64',
-                                          'complex128', 'complex160',
-                                          'complex192', 'complex512']]
+    complex_types = [
+        f'npy_{t}'
+        for t in [
+            'complex32',
+            'complex64',
+            'complex128',
+            'complex160',
+            'complex192',
+            'complex512',
+        ]
+    ]
 
     inplace_map_template = """
     #if defined(%(typen)s)
@@ -243,8 +269,9 @@ def compile_cutils():
         # This is not the most efficient code, but it is written this way to
         # highlight the changes needed to make 2.x code compile under python 3.
         code = code.replace("<Python.h>", '"numpy/npy_3kcompat.h"', 1)
-        code = code.replace("PyCObject", "NpyCapsule")
-        code += """
+        code = (
+            code.replace("PyCObject", "NpyCapsule")
+            + """
         static struct PyModuleDef moduledef = {
             PyModuleDef_HEAD_INIT,
             "cutils_ext",
@@ -260,6 +287,7 @@ def compile_cutils():
         }
         }
         """
+        )
     else:
         code += """
         PyMODINIT_FUNC
@@ -309,15 +337,14 @@ try:
     # directory. This is important to prevent multiple processes from trying to
     # compile the cutils_ext module simultaneously.
         try:
-            try:
-                # We must retry to import it as some other process could
-                # have been compiling it between the first failed import
-                # and when we receive the lock
-                from cutils_ext.cutils_ext import *  # noqa
-            except ImportError:
+            # We must retry to import it as some other process could
+            # have been compiling it between the first failed import
+            # and when we receive the lock
+            from cutils_ext.cutils_ext import *  # noqa
+        except ImportError:
 
-                compile_cutils()
-                from cutils_ext.cutils_ext import *  # noqa
+            compile_cutils()
+            from cutils_ext.cutils_ext import *  # noqa
 
         finally:
             # Release lock on compilation directory.

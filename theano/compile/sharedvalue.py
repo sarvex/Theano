@@ -74,8 +74,6 @@ class SharedVariable(Variable):
                 raise TypeError('value and strict are ignored if you pass '
                                 'a container here')
         else:
-            if container is not None:
-                raise TypeError('Error to specify both value and container')
             self.container = Container(
                 self,
                 storage=[type.filter(value, strict=strict,
@@ -102,10 +100,7 @@ class SharedVariable(Variable):
         different compute devices.
 
         """
-        if borrow:
-            return self.container.value
-        else:
-            return copy.deepcopy(self.container.value)
+        return self.container.value if borrow else copy.deepcopy(self.container.value)
 
     def set_value(self, new_value, borrow=False):
         """
@@ -121,10 +116,7 @@ class SharedVariable(Variable):
         this SharedVariable.
 
         """
-        if borrow:
-            self.container.value = new_value
-        else:
-            self.container.value = copy.deepcopy(new_value)
+        self.container.value = new_value if borrow else copy.deepcopy(new_value)
 
     def zero(self, borrow=False):
         """
@@ -162,17 +154,11 @@ class SharedVariable(Variable):
         # implemented at all, but with a more explicit error message to help
         # Theano users figure out the root of the problem more easily.
         value = self.get_value(borrow=True)
-        if isinstance(value, numpy.ndarray):
-            # Array probably had an unknown dtype.
-            msg = ("a Numpy array with dtype: '%s'. This data type is not "
-                   "currently recognized by Theano tensors: please cast "
-                   "your data into a supported numeric type if you need "
-                   "Theano tensor functionalities." % value.dtype)
-        else:
-            msg = ('an object of type: %s. Did you forget to cast it into '
-                   'a Numpy array before calling theano.shared()?' %
-                   type(value))
-
+        msg = (
+            f"a Numpy array with dtype: '{value.dtype}'. This data type is not currently recognized by Theano tensors: please cast your data into a supported numeric type if you need Theano tensor functionalities."
+            if isinstance(value, numpy.ndarray)
+            else f'an object of type: {type(value)}. Did you forget to cast it into a Numpy array before calling theano.shared()?'
+        )
         raise TypeError(
             "The generic 'SharedVariable' object is not subscriptable. "
             "This shared variable contains %s" % msg)

@@ -122,46 +122,41 @@ if 0:
 
         def __call__(self, env):
             self.merge(env)
-            #eliminate identities
-            if 0:
-                print('SKIPPING optimizations')
-            else:
+            for opt in self.ident_opt_list:
+                opt(env)
 
-                for opt in self.ident_opt_list:
-                    opt(env)
+            for opt in self.sqr:
+                opt(env)
 
-                for opt in self.sqr:
-                    opt(env)
+            self.gemm_opt_1(env)
+            self.gemm_opt_2(env)
 
-                self.gemm_opt_1(env)
-                self.gemm_opt_2(env)
-
-                self.merge(env)
+            self.merge(env)
 
 def print_graph_linker(print_prog=True):
-    if 1:
-        imap = {None:'-'}
-        def blah(i, node, thunk):
-            imap[node] = str(i)
-            if print_prog:# and node.op.__class__ is T.DimShuffle:
-                if False and  node.op == T.DimShuffle((), ['x', 'x'], inplace = True):
-                    print(node.op == T.DimShuffle((), ['x', 'x'],
-                                                  inplace=True), end=' ')
-                    print(node.inputs[0], type(node.inputs[0]), end=' ')
-                    print(node.inputs[0].equals(T.constant(2)), end=' ')
-                outputs = node.outputs
-                inputs = theano.gof.graph.inputs(outputs)
-                print('node ', i, node, end=' ')
-                print(':'.join([imap[inp.owner] for inp in node.inputs]))
-                #print theano.sandbox.pprint.pp.process_graph(inputs, outputs)
-        return theano.sandbox.wraplinker.WrapLinkerMany(
-                [theano.gof.OpWiseCLinker()],
-                [theano.sandbox.wraplinker.run_all
-                    ,blah
-                    #,theano.sandbox.wraplinker.numpy_notall_isfinite
-                    ])
-    else:
+    if not 1:
         return theano.gof.OpWiseCLinker()
+    imap = {None:'-'}
+    def blah(i, node, thunk):
+        imap[node] = str(i)
+        if print_prog:# and node.op.__class__ is T.DimShuffle:
+            if False and  node.op == T.DimShuffle((), ['x', 'x'], inplace = True):
+                print(node.op == T.DimShuffle((), ['x', 'x'],
+                                              inplace=True), end=' ')
+                print(node.inputs[0], type(node.inputs[0]), end=' ')
+                print(node.inputs[0].equals(T.constant(2)), end=' ')
+            outputs = node.outputs
+            inputs = theano.gof.graph.inputs(outputs)
+            print('node ', i, node, end=' ')
+            print(':'.join([imap[inp.owner] for inp in node.inputs]))
+            #print theano.sandbox.pprint.pp.process_graph(inputs, outputs)
+
+    return theano.sandbox.wraplinker.WrapLinkerMany(
+            [theano.gof.OpWiseCLinker()],
+            [theano.sandbox.wraplinker.run_all
+                ,blah
+                #,theano.sandbox.wraplinker.numpy_notall_isfinite
+                ])
 
 
 class M(module.Module):
@@ -208,12 +203,11 @@ m.b = rng.randn(nout) * 0.0
 x = (rng.rand(neg, nout)-0.5) * 1.5
 
 t = time.time()
-for i in xrange(niter):
+for _ in xrange(niter):
     err = m.step(x)
 print('time: ',time.time() - t, 'err: ', err)
 try:
     mode.print_summary()
-    pass
 except:
     pass
 

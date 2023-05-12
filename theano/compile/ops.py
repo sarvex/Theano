@@ -58,7 +58,7 @@ class ViewOp(gof.Op):
         z[0] = x
 
     def __str__(self):
-        return '%s' % self.__class__.__name__
+        return f'{self.__class__.__name__}'
 
     def c_code(self, node, nodename, inp, out, sub):
         iname, = inp
@@ -481,8 +481,7 @@ def load_back(mod, name):
     __import__(mod)
     import sys
     module = sys.modules[mod]
-    obj = getattr(module, name)
-    return obj
+    return getattr(module, name)
 
 
 class FromFunctionOp(gof.Op):
@@ -527,19 +526,17 @@ class FromFunctionOp(gof.Op):
             outputs[i][0] = outs[i]
 
     def __reduce__(self):
-        mod = self.__fn.__module__
         name = self.__fn.__name__
+        mod = self.__fn.__module__
         try:
             obj = load_back(mod, name)
         except (ImportError, KeyError, AttributeError):
-            raise pickle.PicklingError(
-                "Can't pickle as_op(), not found as %s.%s" %
-                (mod, name))
+            raise pickle.PicklingError(f"Can't pickle as_op(), not found as {mod}.{name}")
         else:
             if obj is not self:
                 raise pickle.PicklingError(
-                    "Can't pickle as_op(), not the object "
-                    "at %s.%s" % (mod, name))
+                    f"Can't pickle as_op(), not the object at {mod}.{name}"
+                )
         return load_back, (mod, name)
 
     def _infer_shape(self, node, input_shapes):
@@ -648,12 +645,12 @@ class Rebroadcast(gof.Op):
         self.axis = OrderedDict(items)
         for axis, broad in iteritems(self.axis):
             if not isinstance(axis, (numpy.integer, int)):
-                raise TypeError("Rebroadcast needs integer axes. "
-                                "Got {}".format(axis))
+                raise TypeError(f"Rebroadcast needs integer axes. Got {axis}")
 
             if not isinstance(broad, (numpy.bool_, bool)):
-                raise TypeError("Rebroadcast needs bool for new broadcast "
-                                "pattern. Got {}".format(broad))
+                raise TypeError(
+                    f"Rebroadcast needs bool for new broadcast pattern. Got {broad}"
+                )
 
     def __hash__(self):
         # Need special __hash__ as dict aren't hashable.
@@ -665,8 +662,7 @@ class Rebroadcast(gof.Op):
         if len(self.axis) == 0:
             broadcast_pattern = []
         else:
-            broadcast_pattern = ['?' for i
-                                 in xrange(1 + max(self.axis.keys()))]
+            broadcast_pattern = ['?' for _ in xrange(1 + max(self.axis.keys()))]
         for k, v in iteritems(self.axis):
             broadcast_pattern[k] = str(int(v))
         return '%s{%s}' % (self.__class__.__name__,
@@ -722,10 +718,9 @@ class Rebroadcast(gof.Op):
         itype = node.inputs[0].type.__class__
         if itype in self.c_code_and_version:
             code, version = self.c_code_and_version[itype]
-            final_code = ""
-            for axis, value in iteritems(self.axis):
-                if value:
-                    final_code += code % locals()
+            final_code = "".join(
+                code % locals() for axis, value in iteritems(self.axis) if value
+            )
             return final_code + """
             Py_XDECREF(%(oname)s);
             %(oname)s = %(iname)s;
@@ -848,7 +843,6 @@ class SpecifyShape(gof.Op):
         # Should I do an optimizer that will remove the SpecifyShape?
         # I think Yes
         return [gz, theano.gradient.DisconnectedType()()]
-        return [specify_shape(gz, s), theano.gradient.DisconnectedType()()]
 
     def R_op(self, inputs, eval_points):
         if eval_points[0] is None:

@@ -214,9 +214,15 @@ class T_function(unittest.TestCase):
         checkfor(self, lambda: function([In(a, name=[])], []), TypeError)
 
         def t():
-            f = function([In(a, name=set(['adsf', ()]), value=1.0),
-                          In(x, name=(), value=2.0),
-                          In(s, name=T.scalar(), value=3.0)], a+x+s)
+            f = function(
+                [
+                    In(a, name={'adsf', ()}, value=1.0),
+                    In(x, name=(), value=2.0),
+                    In(s, name=T.scalar(), value=3.0),
+                ],
+                a + x + s,
+            )
+
         checkfor(self, t, TypeError)
 
     def test_copy(self):
@@ -264,9 +270,9 @@ class T_function(unittest.TestCase):
             i_o_variables = fgraph_cpy.inputs + fgraph_cpy.outputs
             ori_storages = storage_map_ori.values()
             for key in storage_map_cpy.keys():
-                storage = storage_map_cpy[key]
                 if key not in i_o_variables or isinstance(key, theano.tensor.Constant):
-                    self.assertTrue(any([ storage is s for s in ori_storages]))
+                    storage = storage_map_cpy[key]
+                    self.assertTrue(any(storage is s for s in ori_storages))
 
             # Assert storages of SharedVariable without updates are shared
             for (input, _1, _2), here, there in zip(ori.indices,
@@ -315,7 +321,7 @@ class T_function(unittest.TestCase):
                 # y and y_rpl should not be updated
                 assert y_rpl.get_value() == 3
                 assert y.get_value() == 1
-            elif second_time:
+            else:
                 # doule update for sharedvariable
                 assert m.get_value() == 12
                 assert z.get_value() == 4
@@ -329,7 +335,7 @@ class T_function(unittest.TestCase):
             for key in cpy.fn.storage_map:
                 if key.name in names:
                     assert map_SV[key.name].container.storage[0] ==\
-                           cpy.fn.storage_map[key][0]
+                               cpy.fn.storage_map[key][0]
 
             second_time = True
 
@@ -546,11 +552,12 @@ class T_function(unittest.TestCase):
         func.fn.allow_gc = False
         func([1])
 
-        check_list = []
-        for key, val in iteritems(func.fn.storage_map):
-            if not isinstance(key, theano.gof.Constant):
-                check_list.append(val)
-        assert any([val[0] for val in check_list])
+        check_list = [
+            val
+            for key, val in iteritems(func.fn.storage_map)
+            if not isinstance(key, theano.gof.Constant)
+        ]
+        assert any(val[0] for val in check_list)
 
         func.free()
 
@@ -586,10 +593,14 @@ class T_picklefunction(unittest.TestCase):
         self.assertTrue(len(f.defaults) == len(g.defaults))
         # print 'f.defaults = %s' % (f.defaults, )
         # print 'g.defaults = %s' % (g.defaults, )
-        self.assertTrue(all([f_req == g_req and f_feed == g_feed and
-            f_val == g_val
-            for ((f_req, f_feed, f_val), (g_req, g_feed, g_val)) in zip(
-                f.defaults, g.defaults)]))
+        self.assertTrue(
+            all(
+                f_req == g_req and f_feed == g_feed and f_val == g_val
+                for ((f_req, f_feed, f_val), (g_req, g_feed, g_val)) in zip(
+                    f.defaults, g.defaults
+                )
+            )
+        )
 
         self.assertFalse(g.value[1] is f.value[1])  # should not have been copied
         self.assertFalse(g.value[2] is f.value[2])  # should have been copied because it is mutable.
@@ -610,11 +621,10 @@ class T_picklefunction(unittest.TestCase):
         f = function([x, In(a, value=h.container[a], implicit=True)], x + a)
 
         try:
-            memo = {}
             ac = copy.deepcopy(a)
-            memo.update({id(a): ac})
+            memo = {id(a): ac}
             hc = copy.deepcopy(h, memo=memo)
-            memo.update({id(h): hc})
+            memo[id(h)] = hc
             fc = copy.deepcopy(f, memo=memo)
         except NotImplementedError as e:
             if e[0].startswith('DebugMode is not picklable'):
@@ -673,17 +683,14 @@ class T_picklefunction(unittest.TestCase):
         old_default_opt  = config.optimizer
         old_default_link = config.linker
         try:
-            try:
-                str_f = pickle.dumps(f, protocol=-1)
-                config.mode = 'Mode'
-                config.linker = 'py'
-                config.optimizer = 'None'
-                g = pickle.loads(str_f)
-                # print g.maker.mode
-                # print compile.mode.default_mode
-            except NotImplementedError as e:
-                if e[0].startswith('DebugMode is not pickl'):
-                    g = 'ok'
+            str_f = pickle.dumps(f, protocol=-1)
+            config.mode = 'Mode'
+            config.linker = 'py'
+            config.optimizer = 'None'
+            g = pickle.loads(str_f)
+        except NotImplementedError as e:
+            if e[0].startswith('DebugMode is not pickl'):
+                g = 'ok'
         finally:
             config.mode = old_default_mode
             config.optimizer = old_default_opt
@@ -710,10 +717,7 @@ class T_picklefunction(unittest.TestCase):
         v = T.vector('v')
 
         # put in some inputs
-        list_of_things = [s, x, v]
-
-        # some derived thing, whose inputs aren't all in the list
-        list_of_things.append(a * x + s )
+        list_of_things = [s, x, v, a * x + s]
 
         f1 = function([x, In(a, value=1.0, name='a'), In(s, value=0.0, update=s+a*x, mutable=True)], s+a*x)
         list_of_things.append(f1)

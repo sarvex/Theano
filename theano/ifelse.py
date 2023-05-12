@@ -70,11 +70,7 @@ class IfElse(PureOp):
     """
     def __init__(self, n_outs, as_view=False, gpu=False, name=None):
         if as_view:
-            # check destroyhandler and others to ensure that a view_map with
-            # multiple inputs can work
-            view_map = {}
-            for idx in xrange(n_outs):
-                view_map[idx] = [idx + 1]
+            view_map = {idx: [idx + 1] for idx in xrange(n_outs)}
             self.view_map = view_map
         self.as_view = as_view
         self.gpu = gpu
@@ -86,18 +82,15 @@ class IfElse(PureOp):
             return False
         if not self.as_view == other.as_view:
             return False
-        if not self.gpu == other.gpu:
-            return False
-        if not self.n_outs == other.n_outs:
-            return False
-        return True
+        return False if not self.gpu == other.gpu else self.n_outs == other.n_outs
 
     def __hash__(self):
-        rval = (hash(type(self)) ^
-                hash(self.as_view) ^
-                hash(self.gpu) ^
-                hash(self.n_outs))
-        return rval
+        return (
+            hash(type(self))
+            ^ hash(self.as_view)
+            ^ hash(self.gpu)
+            ^ hash(self.n_outs)
+        )
 
     def __str__(self):
         args = []
@@ -198,8 +191,8 @@ class IfElse(PureOp):
         ts = ins[1:][:self.n_outs]
         fs = ins[1:][self.n_outs:]
         if self.name is not None:
-            nw_name_t = self.name + '_grad_t'
-            nw_name_f = self.name + '_grad_f'
+            nw_name_t = f'{self.name}_grad_t'
+            nw_name_f = f'{self.name}_grad_f'
         else:
             nw_name_t = None
             nw_name_f = None
@@ -237,42 +230,40 @@ class IfElse(PureOp):
         def thunk():
             if not compute_map[cond][0]:
                 return [0]
+            truthval = storage_map[cond][0]
+            if truthval != 0:
+                ls = [idx + 1 for idx in xrange(self.n_outs)
+                      if not compute_map[ts[idx]][0]]
+                if ls:
+                    return ls
+                for out, t in izip(outputs, ts):
+                    compute_map[out][0] = 1
+                    val = storage_map[t][0]
+                    if self.as_view:
+                        storage_map[out][0] = val
+                    # Work around broken numpy deepcopy
+                    elif type(val) in (numpy.ndarray, numpy.memmap):
+                        storage_map[out][0] = val.copy()
+                    else:
+                        storage_map[out][0] = deepcopy(val)
+                return []
             else:
-                truthval = storage_map[cond][0]
-                if truthval != 0:
-                    ls = [idx + 1 for idx in xrange(self.n_outs)
-                          if not compute_map[ts[idx]][0]]
-                    if len(ls) > 0:
-                        return ls
-                    else:
-                        for out, t in izip(outputs, ts):
-                            compute_map[out][0] = 1
-                            val = storage_map[t][0]
-                            if self.as_view:
-                                storage_map[out][0] = val
-                            # Work around broken numpy deepcopy
-                            elif type(val) in (numpy.ndarray, numpy.memmap):
-                                storage_map[out][0] = val.copy()
-                            else:
-                                storage_map[out][0] = deepcopy(val)
-                        return []
-                else:
-                    ls = [1 + idx + self.n_outs for idx in xrange(self.n_outs)
-                          if not compute_map[fs[idx]][0]]
-                    if len(ls) > 0:
-                        return ls
-                    else:
-                        for out, f in izip(outputs, fs):
-                            compute_map[out][0] = 1
-                            # can't view both outputs unless destroyhandler
-                            # improves
-                            # Work around broken numpy deepcopy
-                            val = storage_map[f][0]
-                            if type(val) in (numpy.ndarray, numpy.memmap):
-                                storage_map[out][0] = val.copy()
-                            else:
-                                storage_map[out][0] = deepcopy(val)
-                        return []
+                ls = [1 + idx + self.n_outs for idx in xrange(self.n_outs)
+                      if not compute_map[fs[idx]][0]]
+                if ls:
+                    return ls
+                for out, f in izip(outputs, fs):
+                    compute_map[out][0] = 1
+                    # can't view both outputs unless destroyhandler
+                    # improves
+                    # Work around broken numpy deepcopy
+                    val = storage_map[f][0]
+                    storage_map[out][0] = (
+                        val.copy()
+                        if type(val) in (numpy.ndarray, numpy.memmap)
+                        else deepcopy(val)
+                    )
+                return []
 
         thunk.lazy = True
         thunk.inputs = [storage_map[v] for v in node.inputs]
@@ -329,10 +320,8 @@ def ifelse(condition, then_branch, else_branch, name=None):
     if type(else_branch) not in (list, tuple):
         else_branch = [else_branch]
 
-    # Some of the elements might be converted into another type,
-    # we will store them in these new_... lists.
-    new_then_branch = []
     new_else_branch = []
+    new_then_branch = []
     for then_branch_elem, else_branch_elem in izip(then_branch, else_branch):
         if not isinstance(then_branch_elem, theano.Variable):
             then_branch_elem = theano.tensor.as_tensor_variable(
@@ -356,15 +345,11 @@ def ifelse(condition, then_branch, else_branch, name=None):
                 then_branch_elem = else_branch_elem.type.filter_variable(
                     then_branch_elem)
 
-            if then_branch_elem.type != else_branch_elem.type:
+        if then_branch_elem.type != else_branch_elem.type:
                 # If the types still don't match, there is a problem.
-                raise TypeError(
-                    'The two branches should have identical types, but '
-                    'they are %s and %s respectively. This error could be '
-                    'raised if for example you provided a one element '
-                    'list on the `then` branch but a tensor on the `else` '
-                    'branch.' %
-                    (then_branch_elem.type, else_branch_elem.type))
+            raise TypeError(
+                f'The two branches should have identical types, but they are {then_branch_elem.type} and {else_branch_elem.type} respectively. This error could be raised if for example you provided a one element list on the `then` branch but a tensor on the `else` branch.'
+            )
 
         new_then_branch.append(then_branch_elem)
         new_else_branch.append(else_branch_elem)
@@ -395,13 +380,14 @@ def ifelse(condition, then_branch, else_branch, name=None):
 @gof.local_optimizer([IfElse])
 def cond_make_inplace(node):
     op = node.op
-    if (isinstance(op, IfElse) and
-        not op.as_view and
-        # For big graph, do not make inplace scalar to speed up
-        # optimization.
-        (len(node.fgraph.apply_nodes) < 500 or
-         not all([getattr(o.type, 'ndim', -1) == 0
-                  for o in node.outputs]))):
+    if (
+        isinstance(op, IfElse)
+        and not op.as_view
+        and (
+            len(node.fgraph.apply_nodes) < 500
+            or any(getattr(o.type, 'ndim', -1) != 0 for o in node.outputs)
+        )
+    ):
         return IfElse(n_outs=op.n_outs,
                       as_view=True,
                       gpu=op.gpu,
@@ -470,9 +456,7 @@ def ifelse_lift_single_if_through_acceptable_ops(main_node):
     """
     if not (isinstance(main_node.op, acceptable_ops)):
         return False
-    all_inp_nodes = set()
-    for inp in main_node.inputs:
-        all_inp_nodes.add(inp.owner)
+    all_inp_nodes = {inp.owner for inp in main_node.inputs}
     ifnodes = [x for x in list(all_inp_nodes)
                if x and isinstance(x.op, IfElse)]
     # if we have multiple ifs as inputs .. it all becomes quite complicated
@@ -500,11 +484,7 @@ def ifelse_lift_single_if_through_acceptable_ops(main_node):
             false_ins.append(x)
     true_eval = mop(*true_ins, **dict(return_list=True))
     false_eval = mop(*false_ins, **dict(return_list=True))
-    # true_eval  = clone(outs, replace = dict(zip(node.outputs, ts)))
-    # false_eval = clone(outs, replace = dict(zip(node.outputs, fs)))
-
-    nw_outs = ifelse(node.inputs[0], true_eval, false_eval, return_list=True)
-    return nw_outs
+    return ifelse(node.inputs[0], true_eval, false_eval, return_list=True)
 
 
 @gof.local_optimizer([IfElse])
@@ -522,7 +502,7 @@ def cond_merge_ifs_true(node):
                 ins_t = tval.owner.inputs[1:][:ins_op.n_outs]
                 replace[idx + 1] = ins_t[tval.owner.outputs.index(tval)]
 
-    if len(replace) == 0:
+    if not replace:
         return False
 
     old_ins = list(node.inputs)
@@ -547,7 +527,7 @@ def cond_merge_ifs_false(node):
                 replace[idx + 1 + op.n_outs] = \
                     ins_t[fval.owner.outputs.index(fval)]
 
-    if len(replace) == 0:
+    if not replace:
         return False
 
     old_ins = list(node.inputs)
@@ -589,7 +569,8 @@ class CondMerge(gof.Optimizer):
                     n_outs=len(mn_ts + pl_ts),
                     as_view=False,
                     gpu=False,
-                    name=mn_name + '&' + pl_name)
+                    name=f'{mn_name}&{pl_name}',
+                )
                 print('here')
                 new_outs = new_ifelse(*new_ins, **dict(return_list=True))
                 new_outs = [clone(x) for x in new_outs]
@@ -625,7 +606,7 @@ def cond_remove_identical(node):
                         jdx not in out_map):
                     out_map[jdx] = idx
 
-    if len(out_map) == 0:
+    if not out_map:
         return False
 
     nw_ts = []
@@ -662,9 +643,7 @@ def cond_merge_random_op(main_node):
     if isinstance(main_node.op, IfElse):
         return False
 
-    all_inp_nodes = set()
-    for inp in main_node.inputs:
-        all_inp_nodes.add(inp.owner)
+    all_inp_nodes = {inp.owner for inp in main_node.inputs}
     cond_nodes = [x for x in list(all_inp_nodes)
                   if x and isinstance(x.op, IfElse)]
 
@@ -695,7 +674,8 @@ def cond_merge_random_op(main_node):
                 n_outs=len(mn_ts + pl_ts),
                 as_view=False,
                 gpu=False,
-                name=mn_name + '&' + pl_name)
+                name=f'{mn_name}&{pl_name}',
+            )
             new_outs = new_ifelse(*new_ins, **dict(return_list=True))
             old_outs = []
             if type(merging_node.outputs) not in (list, tuple):
@@ -707,8 +687,7 @@ def cond_merge_random_op(main_node):
             else:
                 old_outs += proposal.outputs
             pairs = list(zip(old_outs, new_outs))
-            main_outs = clone(main_node.outputs, replace=pairs)
-            return main_outs
+            return clone(main_node.outputs, replace=pairs)
 
 
 # XXX: Optimizations commented pending further debugging (certain optimizations

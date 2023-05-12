@@ -21,7 +21,7 @@ x = (rng.rand(neg, nout)-0.5) * 1.5
 dot_time = 0.0
 
 t = time.time()
-for i in xrange(niter):
+for _ in xrange(niter):
     tt = time.time()
     d = N.dot(x, w)
     dot_time += time.time() - tt

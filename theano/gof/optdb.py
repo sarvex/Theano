@@ -55,9 +55,8 @@ class DB(object):
         if kwargs:
             assert "use_db_name_as_tag" in kwargs
             assert kwargs["use_db_name_as_tag"] is False
-        else:
-            if self.name is not None:
-                tags = tags + (self.name,)
+        elif self.name is not None:
+            tags = tags + (self.name,)
         obj.name = name
         # This restriction is there because in many place we suppose that
         # something in the DB is there only once.
@@ -120,7 +119,7 @@ multiple time in a DB. Tryed to register "%s" again under the new name "%s".
         return variables
 
     def query(self, *tags, **kwtags):
-        if len(tags) >= 1 and isinstance(tags[0], Query):
+        if tags and isinstance(tags[0], Query):
             if len(tags) > 1 or kwtags:
                 raise TypeError('If the first argument to query is a Query,'
                                 ' there should be no other arguments.',
@@ -140,10 +139,9 @@ multiple time in a DB. Tryed to register "%s" again under the new name "%s".
     def __getitem__(self, name):
         variables = self.__db__[name]
         if not variables:
-            raise KeyError("Nothing registered for '%s'" % name)
+            raise KeyError(f"Nothing registered for '{name}'")
         elif len(variables) > 1:
-            raise ValueError('More than one match for %s (please use query)' %
-                             name)
+            raise ValueError(f'More than one match for {name} (please use query)')
         for variable in variables:
             return variable
 
@@ -273,9 +271,9 @@ class EquilibriumDB(DB):
                                                                  False)]
         opts = [o for o in _opts
                 if o not in final_opts and o not in cleanup_opts]
-        if len(final_opts) == 0:
+        if not final_opts:
             final_opts = None
-        if len(cleanup_opts) == 0:
+        if not cleanup_opts:
             cleanup_opts = None
         return opt.EquilibriumOptimizer(
             opts,
@@ -328,7 +326,7 @@ class SequenceDB(DB):
                                      config.optdb.position_cutoff)
         position_dict = self.__position__
 
-        if len(tags) >= 1 and isinstance(tags[0], Query):
+        if tags and isinstance(tags[0], Query):
             # the call to super should have raise an error with a good message
             assert len(tags) == 1
             if getattr(tags[0], 'position_cutoff', None):

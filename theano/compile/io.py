@@ -61,35 +61,25 @@ class SymbolicInput(object):
                  implicit=False):
         assert implicit is not None  # Safety check.
         self.variable = variable
-        if (autoname and name is None):
-            self.name = variable.name
-        else:
-            self.name = name
-
+        self.name = variable.name if (autoname and name is None) else name
         if self.name is not None and not isinstance(self.name, string_types):
-            raise TypeError("name must be a string! (got: %s)" % self.name)
+            raise TypeError(f"name must be a string! (got: {self.name})")
         self.update = update
-        if update is not None:
-            if not variable.type == update.type:
-                raise TypeError("Variable '%s' has type %s but an update of "
-                                "type %s. The type of the update should be "
-                                "the same as the type of the variable" %
-                                (variable, variable.type, update.type))
+        if update is not None and variable.type != update.type:
+            raise TypeError(
+                f"Variable '{variable}' has type {variable.type} but an update of type {update.type}. The type of the update should be the same as the type of the variable"
+            )
 
-        if (mutable is not None):
-            self.mutable = mutable
-        else:
-            self.mutable = (update is not None)
-
+        self.mutable = mutable if (mutable is not None) else (update is not None)
         self.strict = strict
         self.allow_downcast = allow_downcast
         self.implicit = implicit
 
     def __str__(self):
         if self.update:
-            return "In(%s -> %s)" % (self.variable, self.update)
+            return f"In({self.variable} -> {self.update})"
         else:
-            return "In(%s)" % self.variable
+            return f"In({self.variable})"
 
     def __repr__(self):
         return str(self)
@@ -110,7 +100,7 @@ class SymbolicInputKit(object):
 
     def __init__(self, name):
         if not isinstance(name, string_types):
-            raise TypeError('name must be a string (got: %s)' % name)
+            raise TypeError(f'name must be a string (got: {name})')
         self.name = name
         self.sinputs = []
         self.variables = []
@@ -153,9 +143,7 @@ class SymbolicInputKit(object):
             except ValueError:
                 pass
         ret.sort()
-        if not ret:
-            return [[], []]
-        return list(zip(*ret))
+        return [[], []] if not ret else list(zip(*ret))
 
 
 class In(SymbolicInput):
@@ -229,11 +217,7 @@ class In(SymbolicInput):
         # the caller
         self.shared = shared
 
-        if borrow is None:
-            self.borrow = mutable
-        else:
-            self.borrow = borrow
-
+        self.borrow = mutable if borrow is None else borrow
         # mutable implies the output can be both aliased to the input and that
         # the input can be destroyed. borrow simply implies the output can be
         # aliased to the input. Thus mutable=True should require borrow=True.
@@ -247,8 +231,7 @@ class In(SymbolicInput):
                 variable, name)
 
         if implicit is None:
-            implicit = (isinstance(value, gof.Container) or
-                        isinstance(value, SharedVariable))
+            implicit = isinstance(value, (gof.Container, SharedVariable))
         super(In, self).__init__(
             variable=variable,
             name=name,
@@ -282,9 +265,9 @@ class SymbolicOutput(object):
         self.borrow = borrow
 
     def __str__(self):
-        return "Out(%s,%s)" % (self.variable, self.borrow)
+        return f"Out({self.variable},{self.borrow})"
 
     def __repr__(self):
-        return "Out(%s,%s)" % (self.variable, self.borrow)
+        return f"Out({self.variable},{self.borrow})"
 
 Out = SymbolicOutput

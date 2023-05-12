@@ -25,17 +25,18 @@ class Profile_Maker(FunctionMaker):
         ret = super(Profile_Maker, self).create(input_storage, trustme,
                                                 storage_map)
 
-        if (hasattr(theano, 'sandbox') and
-                hasattr(theano.sandbox, 'cuda') and
-                theano.sandbox.cuda.cuda_enabled):
-            if os.environ.get('CUDA_LAUNCH_BLOCKING', '0') != '1':
-                raise Exception(
-                    "You are running the Theano profiler with CUDA enabled."
-                    " Theano GPU ops execution is asynchronous by default."
-                    " So by default, the profile is useless."
-                    " You must set the environment variable"
-                    " CUDA_LAUNCH_BLOCKING to 1 to tell the CUDA driver to"
-                    " synchronize the execution to get a meaningful profile.")
+        if (
+            hasattr(theano, 'sandbox')
+            and hasattr(theano.sandbox, 'cuda')
+            and theano.sandbox.cuda.cuda_enabled
+        ) and os.environ.get('CUDA_LAUNCH_BLOCKING', '0') != '1':
+            raise Exception(
+                "You are running the Theano profiler with CUDA enabled."
+                " Theano GPU ops execution is asynchronous by default."
+                " So by default, the profile is useless."
+                " You must set the environment variable"
+                " CUDA_LAUNCH_BLOCKING to 1 to tell the CUDA driver to"
+                " synchronize the execution to get a meaningful profile.")
 
         # create a function-specific storage container for profiling info
         profile = ProfileStats(atexit_print=False)
@@ -65,7 +66,7 @@ class Profile_Maker(FunctionMaker):
         def new_fn():
             self.mode.apply_time = self.mode.profile_stats[ret].apply_time
             self.mode.variable_shape = \
-                self.mode.profile_stats[ret].variable_shape
+                    self.mode.profile_stats[ret].variable_shape
             ret_fn()
             # delete the old apply_time variable
             # because it doesn't mean the same thing anymore.
@@ -110,10 +111,9 @@ class ProfileMode(Mode):
         return Profile_Maker(i, o, self, *args, **kwargs)
 
     def __get_local_time(self):
-        rval = 0
-        for ps in itervalues(self.profile_stats):
-            rval += sum(ps.apply_time.values())
-        return rval
+        return sum(
+            sum(ps.apply_time.values()) for ps in itervalues(self.profile_stats)
+        )
     local_time = property(__get_local_time)
 
     def __getstate__(self):
@@ -230,8 +230,7 @@ class ProfileMode(Mode):
             accepted.
 
         """
-        compile_time = sum([ps.compile_time for ps
-                            in self.profile_stats.values()])
+        compile_time = sum(ps.compile_time for ps in self.profile_stats.values())
 
         fct_call = dict([(fn, ps.fct_callcount)
                          for (fn, ps) in iteritems(self.profile_stats)])
@@ -249,19 +248,20 @@ class ProfileMode(Mode):
 
         apply_cimpl = {}
         for ps in itervalues(self.profile_stats):
-            apply_cimpl.update(ps.apply_cimpl)
+            apply_cimpl |= ps.apply_cimpl
 
         message = self.message
 
         variable_shape = {}
         for ps in itervalues(self.profile_stats):
-            variable_shape.update(ps.variable_shape)
+            variable_shape |= ps.variable_shape
 
         other_time = dict(
-            linker_time=sum(
-                [ps.linker_time for ps in self.profile_stats.values()]),
+            linker_time=sum(ps.linker_time for ps in self.profile_stats.values()),
             optimizer_time=sum(
-                [ps.optimizer_time for ps in self.profile_stats.values()]))
+                ps.optimizer_time for ps in self.profile_stats.values()
+            ),
+        )
 
         self.print_summary_("print_summary",
                             compile_time, fct_call_time, fct_call,
@@ -310,14 +310,18 @@ class ProfileMode(Mode):
         apply_cimpl = self.apply_cimpl and other.apply_cimpl
         message = self.message
         variable_shape = diff_dict(self.variable_shape, other.variable_shape)
-        self_linker_time = sum([ps.linker_time for ps
-                                in self.profile_stats.values()])
-        other_linker_time = sum([ps.linker_time for ps
-                                 in other.profile_stats.values()])
-        self_optimizer_time = sum([ps.optimizer_time for ps
-                                   in self.profile_stats.values()])
-        other_optimizer_time = sum([ps.optimizer_time for ps
-                                    in other.profile_stats.values()])
+        self_linker_time = sum(
+            ps.linker_time for ps in self.profile_stats.values()
+        )
+        other_linker_time = sum(
+            ps.linker_time for ps in other.profile_stats.values()
+        )
+        self_optimizer_time = sum(
+            ps.optimizer_time for ps in self.profile_stats.values()
+        )
+        other_optimizer_time = sum(
+            ps.optimizer_time for ps in other.profile_stats.values()
+        )
 
         other_time = {'linker_time': self_linker_time - other_linker_time,
                       'optimizer_time': self_optimizer_time -
@@ -373,7 +377,7 @@ class ProfileMode(Mode):
             time_per_call = 0
 
         print()
-        print('ProfileMode.%s(%s)' % (fct_name, message))
+        print(f'ProfileMode.{fct_name}({message})')
         print('---------------------------')
         print()
         print('Time since import %.3fs' % (total_time))
@@ -467,10 +471,7 @@ class ProfileMode(Mode):
                 continue
             tot += t
             ftot = tot * 100 / local_time
-            if ci:
-                msg = '*'
-            else:
-                msg = ' '
+            msg = '*' if ci else ' '
             print('   %4.1f%%  %5.1f%%  %5.3fs  %5.3fs  %.2es %s %5d %2d '
                   '%2d %s' % (f, ftot, t, tot, t / nb_call, msg, nb_call,
                               nb_op, nb_apply, a))
@@ -512,10 +513,7 @@ class ProfileMode(Mode):
                 continue
             tot += t
             ftot = tot * 100 / local_time
-            if ci:
-                msg = '*'
-            else:
-                msg = ' '
+            msg = '*' if ci else ' '
             if op_flops:
                 print('   %4.1f%%  %5.1f%%  %5.3fs  %5.3fs  %.2es %s %7.1f '
                       '%5d %2d %s' % (f, ftot, t, tot, t / nb_call, msg,
@@ -552,10 +550,7 @@ class ProfileMode(Mode):
                 ftot = tot * 100 / local_time
                 if nb_call == 0:
                     continue
-                if apply_cimpl.get(a[1], False):
-                    msg = '*'
-                else:
-                    msg = ' '
+                msg = '*' if apply_cimpl.get(a[1], False) else ' '
                 print('   %4.1f%%  %5.1f%%  %5.3fs  %5.3fs %.2es  %s %i  '
                       '%2i %s' %
                       (f, ftot, t, tot, t / nb_call, msg, nb_call, a[0],
@@ -626,22 +621,20 @@ Test them first, as they are not guaranteed to always provide a speedup.""")
         def amdlibm_speed_up(op):
             if not isinstance(op, T.Elemwise):
                 return False
-            else:
-                l = list_scalar_op(op)
-                for s_op in l:
-                    if s_op.__class__ in scalar_op_amdlibm_speed_up:
-                        return True
-                    elif s_op.__class__ not in scalar_op_amdlibm_no_speed_up:
-                        print("We don't know if amdlibm will accelerate "
-                              "this scalar op.", s_op)
-                return False
+            l = list_scalar_op(op)
+            for s_op in l:
+                if s_op.__class__ in scalar_op_amdlibm_speed_up:
+                    return True
+                elif s_op.__class__ not in scalar_op_amdlibm_no_speed_up:
+                    print("We don't know if amdlibm will accelerate "
+                          "this scalar op.", s_op)
+            return False
 
         def exp_float32_op(op):
             if not isinstance(op, T.Elemwise):
                 return False
-            else:
-                l = list_scalar_op(op)
-                return any([s_op.__class__ in [scal.Exp] for s_op in l])
+            l = list_scalar_op(op)
+            return any(s_op.__class__ in [scal.Exp] for s_op in l)
 
         printed_tip = False
         # tip 1
@@ -650,17 +643,19 @@ Test them first, as they are not guaranteed to always provide a speedup.""")
             printed_tip = True
 
         # tip 2
-        if not config.lib.amdlibm and any([amdlibm_speed_up(a.op) for i, a
-                                           in apply_time]):
+        if not config.lib.amdlibm and any(
+            amdlibm_speed_up(a.op) for i, a in apply_time
+        ):
             print("  - Try installing amdlibm and set the Theano flag "
                   "lib.amdlibm=True. This speeds up only some Elemwise "
                   "operation.")
             printed_tip = True
 
         # tip 3
-        if not config.lib.amdlibm and any([exp_float32_op(a.op) and
-                                           a.inputs[0].dtype == 'float32'
-                                           for i, a in apply_time]):
+        if not config.lib.amdlibm and any(
+            exp_float32_op(a.op) and a.inputs[0].dtype == 'float32'
+            for i, a in apply_time
+        ):
             print("  - With the default gcc libm, exp in float32 is slower "
                   "than in float64! Try Theano flag floatX=float64, or "
                   "install amdlibm and set the theano flags lib.amdlibm=True")
@@ -669,9 +664,9 @@ Test them first, as they are not guaranteed to always provide a speedup.""")
         # tip 4
         for a, t in iteritems(apply_time):
             node = a[1]
-            if (isinstance(node.op, T.Dot) and
-                    all([len(i.type.broadcastable) == 2
-                         for i in node.inputs])):
+            if isinstance(node.op, T.Dot) and all(
+                len(i.type.broadcastable) == 2 for i in node.inputs
+            ):
                 print("  - You have a dot operation that was not optimized to"
                       " dot22 (which is faster). Make sure the inputs are "
                       "float32 or float64, and are the same for both inputs. "

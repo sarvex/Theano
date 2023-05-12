@@ -120,10 +120,7 @@ if (config.device.startswith('cuda') or
 # Use config.numpy to call numpy.seterr
 import numpy
 
-if config.numpy.seterr_all == 'None':
-    _all = None
-else:
-    _all = config.numpy.seterr_all
+_all = None if config.numpy.seterr_all == 'None' else config.numpy.seterr_all
 if config.numpy.seterr_divide == 'None':
     _divide = None
 else:
@@ -185,10 +182,14 @@ def get_scalar_constant_value(v):
     tensor.basic.NotScalarConstantError.
     """
     # Is it necessary to test for presence of theano.sparse at runtime?
-    if 'sparse' in globals() and isinstance(v.type, sparse.SparseType):
-        if v.owner is not None and isinstance(v.owner.op, sparse.CSM):
-            data = v.owner.inputs[0]
-            return tensor.get_scalar_constant_value(data)
+    if (
+        'sparse' in globals()
+        and isinstance(v.type, sparse.SparseType)
+        and v.owner is not None
+        and isinstance(v.owner.op, sparse.CSM)
+    ):
+        data = v.owner.inputs[0]
+        return tensor.get_scalar_constant_value(data)
     return tensor.get_scalar_constant_value(v)
 
 
@@ -202,8 +203,7 @@ def sparse_grad(var):
     .. versionadded:: 0.6rc4
     """
     assert isinstance(var.owner.op, tensor.AdvancedSubtensor1)
-    ret = var.owner.op.__class__(sparse_grad=True)(*var.owner.inputs)
-    return ret
+    return var.owner.op.__class__(sparse_grad=True)(*var.owner.inputs)
 
 
 __import__('theano.tensor.shared_randomstreams')

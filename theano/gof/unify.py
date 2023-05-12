@@ -42,9 +42,12 @@ class Variable:
         self.name = name
 
     def __str__(self):
-        return (self.__class__.__name__ + "(" +
-                ", ".join("%s=%s" % (key, value)
-                          for key, value in iteritems(self.__dict__)) + ")")
+        return (
+            f"{self.__class__.__name__}("
+            + ", ".join(
+                f"{key}={value}" for key, value in iteritems(self.__dict__)
+            )
+        ) + ")"
 
     def __repr__(self):
         return str(self)
@@ -117,10 +120,9 @@ def var_lookup(vartype, name, *args, **kwargs):
     sig = (vartype, name)
     if sig in _all:
         return _all[sig]
-    else:
-        v = vartype(name, *args)
-        _all[sig] = v
-        return v
+    v = vartype(name, *args)
+    _all[sig] = v
+    return v
 
 Var = partial(var_lookup, FreeVariable)
 V = Var
@@ -221,12 +223,7 @@ def unify_walk(a, b, U):
     Here is a list of unification rules with their associated behavior:
 
     """
-    if a.__class__ != b.__class__:
-        return False
-    elif a == b:
-        return U
-    else:
-        return False
+    return False if a.__class__ != b.__class__ or a != b else U
 
 
 @comm_guard(FreeVariable, ANY_TYPE)
@@ -245,10 +242,7 @@ def unify_walk(bv, o, U):
     The unification succeed iff BV.value == other_object.
 
     """
-    if bv.value == o:
-        return U
-    else:
-        return False
+    return U if bv.value == o else False
 
 
 @comm_guard(OrVariable, ANY_TYPE)
@@ -272,9 +266,8 @@ def unify_walk(nv, o, U):
     """
     if o in nv.not_options:
         return False
-    else:
-        v = BoundVariable("?", o)
-        return U.merge(v, nv)
+    v = BoundVariable("?", o)
+    return U.merge(v, nv)
 
 
 @comm_guard(FreeVariable, Variable)
@@ -403,10 +396,7 @@ def unify_walk(v, o, U):
 
     """
     best_v = U[v]
-    if v is not best_v:
-        return unify_walk(o, best_v, U)  # reverse argument order so if o is a Variable this block of code is run again
-    else:
-        return FALL_THROUGH  # call the next version of unify_walk that matches the type signature
+    return unify_walk(o, best_v, U) if v is not best_v else FALL_THROUGH
 
 
 ################################
@@ -453,10 +443,7 @@ def unify_merge(l1, l2, U):
 def unify_merge(d1, d2, U):
     d = d1.__class__()
     for k1, v1 in iteritems(d1):
-        if k1 in d2:
-            d[k1] = unify_merge(v1, d2[k1], U)
-        else:
-            d[k1] = unify_merge(v1, v1, U)
+        d[k1] = unify_merge(v1, d2[k1], U) if k1 in d2 else unify_merge(v1, v1, U)
     for k2, v2 in iteritems(d2):
         if k2 not in d1:
             d[k2] = unify_merge(v2, v2, U)
@@ -487,10 +474,7 @@ def unify_merge(v, o, U):
 
     """
     best_v = U[v]
-    if v is not best_v:
-        return unify_merge(o, best_v, U)  # reverse argument order so if o is a Variable this block of code is run again
-    else:
-        return FALL_THROUGH  # call the next version of unify_walk that matches the type signature
+    return unify_merge(o, best_v, U) if v is not best_v else FALL_THROUGH
 
 
 ################################
@@ -505,10 +489,7 @@ def unify_build(x, U):
 
 def unify(a, b):
     U = unify_walk(a, b, Unification())
-    if not U:
-        return None, False
-    else:
-        return unify_merge(a, b, U), U
+    return (None, False) if not U else (unify_merge(a, b, U), U)
 
 
 ################################

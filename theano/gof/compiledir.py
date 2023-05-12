@@ -32,62 +32,61 @@ def cleanup():
     for directory in os.listdir(compiledir):
         file = None
         try:
+            filename = os.path.join(compiledir, directory, "key.pkl")
+            file = open(filename, 'rb')
+            # print file
             try:
-                filename = os.path.join(compiledir, directory, "key.pkl")
-                file = open(filename, 'rb')
-                # print file
-                try:
-                    keydata = pickle.load(file)
-                    for key in list(keydata.keys):
-                        have_npy_abi_version = False
-                        have_c_compiler = False
-                        for obj in flatten(key):
-                            if isinstance(obj, numpy.ndarray):
+                keydata = pickle.load(file)
+                for key in list(keydata.keys):
+                    have_npy_abi_version = False
+                    have_c_compiler = False
+                    for obj in flatten(key):
+                        if isinstance(obj, numpy.ndarray):
+                            # Reuse have_npy_abi_version to
+                            # force the removing of key
+                            have_npy_abi_version = False
+                            break
+                        elif isinstance(obj, string_types):
+                            if obj.startswith('NPY_ABI_VERSION=0x'):
+                                have_npy_abi_version = True
+                            elif obj.startswith('c_compiler_str='):
+                                have_c_compiler = True
+                        elif (isinstance(obj, (theano.gof.Op,
+                                               theano.gof.Type)) and
+                              hasattr(obj, 'c_code_cache_version')):
+                            v = obj.c_code_cache_version()
+                            if v not in [(), None] and v not in key[0]:
                                 # Reuse have_npy_abi_version to
                                 # force the removing of key
                                 have_npy_abi_version = False
                                 break
-                            elif isinstance(obj, string_types):
-                                if obj.startswith('NPY_ABI_VERSION=0x'):
-                                    have_npy_abi_version = True
-                                elif obj.startswith('c_compiler_str='):
-                                    have_c_compiler = True
-                            elif (isinstance(obj, (theano.gof.Op,
-                                                   theano.gof.Type)) and
-                                  hasattr(obj, 'c_code_cache_version')):
-                                v = obj.c_code_cache_version()
-                                if v not in [(), None] and v not in key[0]:
-                                    # Reuse have_npy_abi_version to
-                                    # force the removing of key
-                                    have_npy_abi_version = False
-                                    break
 
-                        if not have_npy_abi_version or not have_c_compiler:
-                            try:
-                                # This can happen when we move the compiledir.
-                                if keydata.key_pkl != filename:
-                                    keydata.key_pkl = filename
-                                keydata.remove_key(key)
-                            except IOError:
-                                _logger.error(
-                                    "Could not remove file '%s'. To complete "
-                                    "the clean-up, please remove manually "
-                                    "the directory containing it.",
-                                    filename)
-                    if len(keydata.keys) == 0:
-                        shutil.rmtree(os.path.join(compiledir, directory))
+                    if not have_npy_abi_version or not have_c_compiler:
+                        try:
+                            # This can happen when we move the compiledir.
+                            if keydata.key_pkl != filename:
+                                keydata.key_pkl = filename
+                            keydata.remove_key(key)
+                        except IOError:
+                            _logger.error(
+                                "Could not remove file '%s'. To complete "
+                                "the clean-up, please remove manually "
+                                "the directory containing it.",
+                                filename)
+                if len(keydata.keys) == 0:
+                    shutil.rmtree(os.path.join(compiledir, directory))
 
-                except EOFError:
-                    _logger.error(
-                        "Could not read key file '%s'. To complete "
-                        "the clean-up, please remove manually "
-                        "the directory containing it.",
-                        filename)
-            except IOError:
+            except EOFError:
                 _logger.error(
-                    "Could not clean up this directory: '%s'. To complete "
-                    "the clean-up, please remove it manually.",
-                    directory)
+                    "Could not read key file '%s'. To complete "
+                    "the clean-up, please remove manually "
+                    "the directory containing it.",
+                    filename)
+        except IOError:
+            _logger.error(
+                "Could not clean up this directory: '%s'. To complete "
+                "the clean-up, please remove it manually.",
+                directory)
         finally:
             if file is not None:
                 file.close()
@@ -110,15 +109,25 @@ def print_compiledir_content():
         with open(filename, 'rb') as file:
             try:
                 keydata = pickle.load(file)
-                ops = list(set([x for x in flatten(keydata.keys)
-                                if isinstance(x, theano.gof.Op)]))
-                if len(ops) == 0:
+                ops = list(
+                    {
+                        x
+                        for x in flatten(keydata.keys)
+                        if isinstance(x, theano.gof.Op)
+                    }
+                )
+                if not ops:
                     zeros_op += 1
                 elif len(ops) > 1:
                     more_than_one_ops += 1
                 else:
-                    types = list(set([x for x in flatten(keydata.keys)
-                                      if isinstance(x, theano.gof.Type)]))
+                    types = list(
+                        {
+                            x
+                            for x in flatten(keydata.keys)
+                            if isinstance(x, theano.gof.Type)
+                        }
+                    )
                     table.append((dir, ops[0], types))
 
                 size = os.path.getsize(filename)
@@ -150,7 +159,7 @@ def print_compiledir_content():
 
     if big_key_files:
         big_key_files = sorted(big_key_files, key=lambda t: str(t[1]))
-        big_total_size = sum([sz for _, sz, _ in big_key_files])
+        big_total_size = sum(sz for _, sz, _ in big_key_files)
         print(("There are directories with key files bigger than %d bytes "
                "(they probably contain big tensor constants)" %
                max_key_file_size))
@@ -187,20 +196,18 @@ def basecompiledir_ls():
             others.append(f)
 
     subdirs = sorted(subdirs)
-    others = sorted(others)
-
-    print('Base compile dir is %s' % theano.config.base_compiledir)
+    print(f'Base compile dir is {theano.config.base_compiledir}')
     print('Sub-directories (possible compile caches):')
     for d in subdirs:
-        print('    %s' % d)
+        print(f'    {d}')
     if not subdirs:
         print('    (None)')
 
-    if others:
+    if others := sorted(others):
         print()
         print('Other files in base_compiledir:')
         for f in others:
-            print('    %s' % f)
+            print(f'    {f}')
 
 
 def basecompiledir_purge():

@@ -117,21 +117,16 @@ def main():
         addplugins.append(DisabDocString())
 
     try:
-        if addplugins:
-            ret = nose.main(addplugins=addplugins)
-        else:
-            ret = nose.main()
-        return ret
+        return nose.main(addplugins=addplugins) if addplugins else nose.main()
     except TypeError as e:
-        if "got an unexpected keyword argument 'addplugins'" in e.message:
-            # This means nose is too old and does not support plugins
-            _logger.warn(
-                'KnownFailure plugin from NumPy can\'t'
-                ' be used as nosetests is too old. '
-                'Use --without-knownfailure to disable this warning.')
-            nose.main()
-        else:
+        if "got an unexpected keyword argument 'addplugins'" not in e.message:
             raise
+        # This means nose is too old and does not support plugins
+        _logger.warn(
+            'KnownFailure plugin from NumPy can\'t'
+            ' be used as nosetests is too old. '
+            'Use --without-knownfailure to disable this warning.')
+        nose.main()
 
 
 def help():
@@ -226,26 +221,18 @@ class DisabDocString(Plugin):
         if self.name is None:
             self.name = self.__class__.__name__.lower()
         if self.enableOpt is None:
-            self.enableOpt = ("enable_plugin_%s"
-                              % self.name.replace('-', '_'))
+            self.enableOpt = f"enable_plugin_{self.name.replace('-', '_')}"
 
     def options(self, parser, env):
-        env_opt = 'NOSE_WITH_%s' % self.name.upper()
+        env_opt = f'NOSE_WITH_{self.name.upper()}'
         # latter expression to be used if plugin called from the command line
-        parser.add_option("--%s" % self.name,
-                          # will be called with Nosetests 'main' or 'run'
-                          # function's' argument '--disabdocstring'
-                          action="store_true",
-                          dest=self.enableOpt,
-                          # the latter entails that the boolean self.enableOpt
-                          # is set to 'True' when plugin is called through a
-                          # function's argument
-                          default=env.get(env_opt),
-                          # entails that plugin will be enabled when command
-                          # line trigger 'env_opt' will be activated
-                          help="Enable plugin %s: %s [%s]" %
-                          (self.__class__.__name__,
-                           self.help(), env_opt))
+        parser.add_option(
+            f"--{self.name}",
+            action="store_true",
+            dest=self.enableOpt,
+            default=env.get(env_opt),
+            help=f"Enable plugin {self.__class__.__name__}: {self.help()} [{env_opt}]",
+        )
 
     def configure(self, options, conf):
         self.conf = conf

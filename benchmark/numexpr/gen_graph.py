@@ -33,7 +33,6 @@ def timeit_2vector(nb_element=1e6, nb_repeat=3, nb_call=int(1e2), expr="a**2 + b
     """Returns a dictionary whose keys are implementations ('numpy', 'numexpr', 'theano', etc.)
     and whose values are numpy arrays of times taken to evalute the given problem.
     """
-    rval = dict() 
     print()
     print("timeit_2vector(nb_element=%(nb_element)s,nb_repeat=%(nb_repeat)s,nb_call=%(nb_call)s, expr=%(expr)s, do_unalign=%(do_unalign)s)"%locals())
 
@@ -44,8 +43,7 @@ def timeit_2vector(nb_element=1e6, nb_repeat=3, nb_call=int(1e2), expr="a**2 + b
     t1 = timeit.Timer("%(expr)s"%locals(),"from numpy import exp; %(init)s"%locals())
     numpy_times = np.asarray(t1.repeat(nb_repeat,nb_call))
     print("NumPy time: each time=",numpy_times, "min_time=", numpy_times.min())
-    rval['numpy'] = numpy_times
-
+    rval = {'numpy': numpy_times}
     t2 = timeit.Timer("""ne.evaluate("%(expr)s")"""%locals(),
                       "import numexpr as ne; %(init)s"%locals())
     numexpr_times=np.asarray(t2.repeat(nb_repeat,nb_call))
@@ -77,15 +75,28 @@ def exec_timeit_2vector(expr, nb_call_scal=1, fname=None, do_unalign=False, do_a
            (1e4,10000),(5e4,5000),(1e5,2000),(1e6,200),(1e7,10)
            ]
     exp = [(1e3,100000),(5e3,50000)]
-    runtimes=[]
-
-    for nb_e, nb_c in exp:
-        runtimes.append(timeit_2vector(nb_element=nb_e, nb_repeat=3, nb_call=nb_c*nb_call_scal, expr=expr, do_amd=do_amd))
+    runtimes = [
+        timeit_2vector(
+            nb_element=nb_e,
+            nb_repeat=3,
+            nb_call=nb_c * nb_call_scal,
+            expr=expr,
+            do_amd=do_amd,
+        )
+        for nb_e, nb_c in exp
+    ]
     if do_unalign:
-        runtimes_unalign=[]
-        for nb_e, nb_c in exp:
-            runtimes_unalign.append(timeit_2vector(nb_element=nb_e, nb_repeat=3, nb_call=nb_c*nb_call_scal, expr=expr, do_unalign=True, do_amd=do_amd))
-
+        runtimes_unalign = [
+            timeit_2vector(
+                nb_element=nb_e,
+                nb_repeat=3,
+                nb_call=nb_c * nb_call_scal,
+                expr=expr,
+                do_unalign=True,
+                do_amd=do_amd,
+            )
+            for nb_e, nb_c in exp
+        ]
     print('Runtimes list = ', runtimes)
     numexpr_speedup = np.asarray([t['numpy'].min()/t['numexpr'].min() for t in runtimes],"float32")
     print("time(NumPy) / time(numexpr)", end=' ')
@@ -121,16 +132,16 @@ def exec_timeit_2vector(expr, nb_call_scal=1, fname=None, do_unalign=False, do_a
             pylab.semilogx(nb_calls, speedup, linewidth=1.0)
 
     pylab.axhline(y=1, linewidth=1.0, color='black')
-        
+
     pylab.xlabel('Dimension of real valued vectors a and b')
     pylab.ylabel('Speed up vs NumPy')
     if do_unalign and do_amd:
         pylab.legend(("Numexpr","Theano","Theano(amdlibm)", "Numexpr(unalign)",
                       "Theano(unalign)","Theano(amdlibm,unalign)"),loc='upper left')
-    elif do_unalign and not do_amd:
+    elif do_unalign:
         pylab.legend(("Numexpr","Theano","Numexpr(unalign)",
                       "Theano(unalign)",),loc='upper left')
-    elif not do_unalign and do_amd:
+    elif do_amd:
         pylab.legend(("Numexpr","Theano","Theano(amdlibm)"),loc='upper left')
     else:
         pylab.legend(("Numexpr","Theano"),loc='upper left')
@@ -163,9 +174,16 @@ def execs_timeit_2vector(exprs, fname=None):
                 nb_call_scal=expr[1]
                 expr = expr[0]
             str_expr.append(expr)
-            time=[]
-            for nb_e, nb_c in exp:
-                time.append(timeit_2vector(nb_element=nb_e, nb_repeat=3, nb_call=nb_c*nb_call_scal, expr=expr, do_amd=False))
+            time = [
+                timeit_2vector(
+                    nb_element=nb_e,
+                    nb_repeat=3,
+                    nb_call=nb_c * nb_call_scal,
+                    expr=expr,
+                    do_amd=False,
+                )
+                for nb_e, nb_c in exp
+            ]
             times.append(time)
     if 'pylab' not in globals():
         return
@@ -195,9 +213,9 @@ def execs_timeit_2vector(exprs, fname=None):
         speedup = [t["numpy"].min()/t["theano"].min() for t in time]
         pylab.semilogx(nb_calls, speedup, linewidth=1.0, color = 'b')
         pylab.grid(True)
-        if (idx == 2) or (idx == 3):
+        if idx in [2, 3]:
             pylab.xlabel('Dimension of vectors a and b', fontsize = 15)
-        if (idx == 0) or (idx == 2):
+        if idx in [0, 2]:
             pylab.ylabel('Speed up vs NumPy', fontsize = 15)
         pylab.axhline(y=1, linewidth=1.0, color='black')
         pylab.xlim(1e3,1e7)

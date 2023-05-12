@@ -116,9 +116,8 @@ class OpFromGraph(gof.Op):
 
     def make_node(self, *inputs):
         for input, type in zip(inputs, self.input_types):
-            if not type == input.type:
-                raise TypeError("Wrong type, expected %s but got %s" %
-                                (type, input.type))
+            if type != input.type:
+                raise TypeError(f"Wrong type, expected {type} but got {input.type}")
         return gof.Apply(self,
                          list(inputs) + self.shared_inputs,
                          [type() for type in self.output_types])

@@ -100,24 +100,26 @@ def rebuild_collect_shared(outputs,
         elif isinstance(v, SharedVariable):
             if v not in shared_inputs:
                 shared_inputs.append(v)
-            if hasattr(v, 'default_update'):
-                # Check that v should not be excluded from the default
-                # updates list
-                if (no_default_updates is False or
-                    (isinstance(no_default_updates, list) and
-                     v not in no_default_updates)):
-                    # Do not use default_update if a "real" update was
-                    # provided
-                    if v not in update_d:
-                        v_update = v.type.filter_variable(v.default_update,
-                                                          allow_convert=False)
-                        if v_update.type != v.type:
-                            raise TypeError(
-                                'an update must have the same type as '
-                                'the original shared variable',
-                                (v, v.type, v_update, v_update.type))
-                        update_d[v] = v_update
-                        update_expr.append((v, v_update))
+            if (
+                hasattr(v, 'default_update')
+                and (
+                    no_default_updates is False
+                    or (
+                        isinstance(no_default_updates, list)
+                        and v not in no_default_updates
+                    )
+                )
+                and v not in update_d
+            ):
+                v_update = v.type.filter_variable(v.default_update,
+                                                  allow_convert=False)
+                if v_update.type != v.type:
+                    raise TypeError(
+                        'an update must have the same type as '
+                        'the original shared variable',
+                        (v, v.type, v_update, v_update.type))
+                update_d[v] = v_update
+                update_expr.append((v, v_update))
         if not copy_inputs_over or (isinstance(v, Constant) and
                                     hasattr(v, 'fgraph')):
             # Cloning shared variables implies copying their underlying
@@ -427,10 +429,7 @@ def pfunc(params, outputs=None, mode=None, updates=None, givens=None,
     if outputs is None:
         out_list = []
     else:
-        if isinstance(outputs, (list, tuple)):
-            out_list = list(outputs)
-        else:
-            out_list = [outputs]
+        out_list = list(outputs) if isinstance(outputs, (list, tuple)) else [outputs]
     extended_outputs = out_list + additional_outputs
 
     output_vars = rebuild_collect_shared(extended_outputs,
@@ -447,11 +446,10 @@ def pfunc(params, outputs=None, mode=None, updates=None, givens=None,
     # Recover only the clones of the original outputs
     if outputs is None:
         cloned_outputs = []
+    elif isinstance(outputs, (list, tuple)):
+        cloned_outputs = cloned_extended_outputs[:len(outputs)]
     else:
-        if isinstance(outputs, (list, tuple)):
-            cloned_outputs = cloned_extended_outputs[:len(outputs)]
-        else:
-            cloned_outputs = cloned_extended_outputs[0]
+        cloned_outputs = cloned_extended_outputs[0]
 
     for i, iv in zip(inputs, input_variables):
         i.variable = iv
@@ -486,7 +484,7 @@ def _pfunc_param_to_in(param, strict=False, allow_downcast=None):
         return In(variable=param, strict=strict, allow_downcast=allow_downcast)
     elif isinstance(param, In):
         return param
-    raise TypeError('Unknown parameter type: %s' % type(param))
+    raise TypeError(f'Unknown parameter type: {type(param)}')
 
 
 def iter_over_pairs(pairs):
@@ -506,7 +504,4 @@ def iter_over_pairs(pairs):
         An iterable yielding pairs.
 
     """
-    if isinstance(pairs, dict):
-        return iteritems(pairs)
-    else:
-        return pairs
+    return iteritems(pairs) if isinstance(pairs, dict) else pairs

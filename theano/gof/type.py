@@ -434,18 +434,6 @@ class PureType(object):
         """
         return self.values_eq(a, b)
 
-#    def get_shape_info(self, obj):
-        """
-        Optional function. See TensorType().get_shape_info for definition.
-
-        """
-
-#    def get_size(self, shape_info):
-        """
-        Optional function. See TensorType().get_size for definition.
-
-        """
-
 _nothing = """
        """
 
@@ -521,11 +509,7 @@ class SingletonType(Type):
     # we compare the type. See test_type_other.test_none_Constant for
     # an exmple. So we need to implement __eq__ and __hash__
     def __eq__(self, other):
-        if self is other:
-            return True
-        if type(self) is type(other):
-            return True
-        return False
+        return True if self is other else type(self) is type(other)
 
     def __hash__(self):
         return hash(type(self))

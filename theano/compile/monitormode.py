@@ -84,11 +84,12 @@ class MonitorMode(Mode):
         """
         if optimizer == "":
             optimizer = self.provided_optimizer
-        new_mode = type(self)(pre_func=self.pre_func,
-                              post_func=self.post_func,
-                              linker=None,
-                              optimizer=optimizer)
-        return new_mode
+        return type(self)(
+            pre_func=self.pre_func,
+            post_func=self.post_func,
+            linker=None,
+            optimizer=optimizer,
+        )
 
 
 def detect_nan(i, node, fn):
@@ -97,6 +98,6 @@ def detect_nan(i, node, fn):
                 numpy.isnan(output[0]).any()):
             print('*** NaN detected ***')
             theano.printing.debugprint(node)
-            print('Inputs : %s' % [input[0] for input in fn.inputs])
-            print('Outputs: %s' % [output[0] for output in fn.outputs])
+            print(f'Inputs : {[input[0] for input in fn.inputs]}')
+            print(f'Outputs: {[output[0] for output in fn.outputs]}')
             break

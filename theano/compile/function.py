@@ -240,19 +240,19 @@ def function(inputs, outputs=None, mode=None, updates=None, givens=None,
     if name is None:
         # Determine possible file names
         source_file = re.sub('\.pyc?', '.py', __file__)
-        compiled_file = source_file + 'c'
+        compiled_file = f'{source_file}c'
 
         stack = tb.extract_stack()
         idx = len(stack) - 1
 
         last_frame = stack[idx]
-        if (last_frame[0] == source_file or last_frame[0] == compiled_file):
+        if last_frame[0] in [source_file, compiled_file]:
             func_frame = stack[idx - 1]
             while "theano/gof" in func_frame[0] and idx > 0:
                 idx -= 1
                 # This can hapen if we call var.eval()
                 func_frame = stack[idx - 1]
-            name = func_frame[0] + ':' + str(func_frame[1])
+            name = f'{func_frame[0]}:{str(func_frame[1])}'
 
     if updates is None:
         updates = []
@@ -261,16 +261,9 @@ def function(inputs, outputs=None, mode=None, updates=None, givens=None,
             not isinstance(updates, compat.OrderedDict) and
             len(updates) > 1):
         warnings.warn(
-            "The parameter 'updates' of theano.function()"
-            " expects an OrderedDict,"
-            " got " + str(type(updates)) + ". Using "
-            "a standard dictionary here results in "
-            "non-deterministic behavior. You should use an OrderedDict"
-            " if you are using Python 2.7 (theano.compat.OrderedDict"
-            " for older python), or use a list of (shared, update)"
-            " pairs. Do not just convert your dictionary to this type before"
-            " the call as the conversion will still be non-deterministic.",
-            stacklevel=2)
+            f"The parameter 'updates' of theano.function() expects an OrderedDict, got {str(type(updates))}. Using a standard dictionary here results in non-deterministic behavior. You should use an OrderedDict if you are using Python 2.7 (theano.compat.OrderedDict for older python), or use a list of (shared, update) pairs. Do not just convert your dictionary to this type before the call as the conversion will still be non-deterministic.",
+            stacklevel=2,
+        )
 
     if givens is None:
         givens = []
@@ -280,17 +273,20 @@ def function(inputs, outputs=None, mode=None, updates=None, givens=None,
                         "input.")
 
     # compute some features of the arguments:
-    uses_tuple = any([isinstance(i, (list, tuple)) for i in inputs])
+    uses_tuple = any(isinstance(i, (list, tuple)) for i in inputs)
     uses_updates = bool(updates)
     uses_givens = bool(givens)
 
-    # See if we have any mutable / borrow inputs
-    check_for_aliased_inputs = False
-    for i in inputs:
-        if (isinstance(i, In) and ((hasattr(i, 'borrow') and i.borrow) or
-                                   (hasattr(i, 'mutable') and i.mutable))):
-            check_for_aliased_inputs = True
-
+    check_for_aliased_inputs = any(
+        (
+            isinstance(i, In)
+            and (
+                (hasattr(i, 'borrow') and i.borrow)
+                or (hasattr(i, 'mutable') and i.mutable)
+            )
+        )
+        for i in inputs
+    )
     if uses_tuple:
         # we must use old semantics in this case.
         if profile:

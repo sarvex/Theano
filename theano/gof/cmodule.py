@@ -72,7 +72,7 @@ def debug_counter(name, every=1):
     setattr(debug_counter, name, getattr(debug_counter, name, 0) + 1)
     n = getattr(debug_counter, name)
     if n % every == 0:
-        print("debug_counter [%s]: %s" % (name, n), file=sys.stderr)
+        print(f"debug_counter [{name}]: {n}", file=sys.stderr)
 
 
 class ExtFunction(object):
@@ -172,8 +172,11 @@ static struct PyModuleDef moduledef = {{
                   self.hash_placeholder), file=stream)
             for block in self.init_blocks:
                 print('  ', block, file=stream)
-            print('  ', ('(void) Py_InitModule("%s", MyMethods);'
-                  % self.hash_placeholder), file=stream)
+            print(
+                '  ',
+                f'(void) Py_InitModule("{self.hash_placeholder}", MyMethods);',
+                file=stream,
+            )
         print("}", file=stream)
 
     def add_include(self, str):
@@ -198,10 +201,10 @@ static struct PyModuleDef moduledef = {{
         for inc in self.includes:
             if not inc:
                 continue
-            if inc[0] == '<' or inc[0] == '"':
+            if inc[0] in ['<', '"']:
                 print("#include", inc, file=sio)
             else:
-                print('#include "%s"' % inc, file=sio)
+                print(f'#include "{inc}"', file=sio)
 
         print("//////////////////////", file=sio)
         print("////  Support Code", file=sio)
@@ -286,12 +289,11 @@ def dlimport(fullpath, suffix=None):
     _logger.debug("WORKDIR %s", workdir)
     _logger.debug("module_name %s", module_name)
 
-    sys.path[0:0] = [workdir]  # insert workdir at beginning (temporarily)
+    sys.path[:0] = [workdir]
     global import_time
     try:
-        if importlib is not None:
-            if hasattr(importlib, "invalidate_caches"):
-                importlib.invalidate_caches()
+        if importlib is not None and hasattr(importlib, "invalidate_caches"):
+            importlib.invalidate_caches()
         t0 = time.time()
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore",
@@ -337,7 +339,7 @@ def module_name_from_dir(dirname, err=True, files=None):
         files = os.listdir(dirname)
     names = [file for file in files
              if file.endswith('.so') or file.endswith('.pyd')]
-    if len(names) == 0 and not err:
+    if not names and not err:
         return None
     elif len(names) == 1:
         return os.path.join(dirname, names[0])
@@ -360,12 +362,16 @@ def is_same_entry(entry_1, entry_2):
         return True
     if os.path.realpath(entry_1) == os.path.realpath(entry_2):
         return True
-    if (os.path.basename(entry_1) == os.path.basename(entry_2) and
-            (os.path.basename(os.path.dirname(entry_1)) ==
-             os.path.basename(os.path.dirname(entry_2))) and
-            os.path.basename(os.path.dirname(entry_1)).startswith('tmp')):
-        return True
-    return False
+    return bool(
+        (
+            os.path.basename(entry_1) == os.path.basename(entry_2)
+            and (
+                os.path.basename(os.path.dirname(entry_1))
+                == os.path.basename(os.path.dirname(entry_2))
+            )
+            and os.path.basename(os.path.dirname(entry_1)).startswith('tmp')
+        )
+    )
 
 
 def get_module_hash(src_code, key):
@@ -534,10 +540,11 @@ class KeyData(object):
         for key in self.keys:
             del entry_from_key[key]
         if do_manual_check:
-            to_del = []
-            for key, key_entry in iteritems(entry_from_key):
-                if key_entry == entry:
-                    to_del.append(key)
+            to_del = [
+                key
+                for key, key_entry in iteritems(entry_from_key)
+                if key_entry == entry
+            ]
             for key in to_del:
                 del entry_from_key[key]
 
@@ -791,14 +798,6 @@ class ModuleCache(object):
                             rmtree(root, ignore_nocleanup=True,
                                    msg='broken cache directory',
                                    level=logging.INFO)
-                        else:
-                            # This exception is often triggered by keys
-                            # that contain references to classes that have
-                            # not yet been imported (e.g. when running two
-                            # different Theano-based scripts). They are not
-                            # necessarily broken, but we cannot load them
-                            # now. They will be loaded later if needed.
-                            pass
                         continue
 
                     if not isinstance(key_data, KeyData):
@@ -910,9 +909,9 @@ class ModuleCache(object):
                 else:
                     too_old_to_use.append(entry)
 
-            # If the compilation failed, no key.pkl is in that
-            # directory, but a mod.* should be there.
-            # We do nothing here.
+                # If the compilation failed, no key.pkl is in that
+                # directory, but a mod.* should be there.
+                # We do nothing here.
 
         # Clean up the name space to prevent bug.
         del root, files, subdirs
@@ -995,9 +994,7 @@ class ModuleCache(object):
         else:
             assert key_data is not None
             name = key_data.get_entry()
-        if name is None:
-            return None
-        return self._get_module(name)
+        return None if name is None else self._get_module(name)
 
     def _get_from_hash(self, module_hash, key, keep_lock=False):
         if module_hash in self.module_hash_to_key_data:
@@ -1053,10 +1050,8 @@ class ModuleCache(object):
         key_pkl = os.path.join(location, 'key.pkl')
         assert not os.path.exists(key_pkl)
         key_data = KeyData(
-            keys=set([key]),
-            module_hash=module_hash,
-            key_pkl=key_pkl,
-            entry=name)
+            keys={key}, module_hash=module_hash, key_pkl=key_pkl, entry=name
+        )
 
         key_broken = False
         if key[0]:
@@ -1198,22 +1193,16 @@ class ModuleCache(object):
                             key_data = pickle.load(f)
                 time.sleep(2)
 
-        found = sum(key == other_key for other_key in key_data.keys)
         msg = ''
+        found = sum(key == other_key for other_key in key_data.keys)
         if found == 0:
             msg = 'Key not found in unpickled KeyData file'
-            if key_data.keys:
-                # This is to make debugging in pdb easier, by providing
-                # the offending keys in the local context.
-                # key_data_keys = list(key_data.keys)
-                # import pdb; pdb.set_trace()
-                pass
         elif found > 1:
             msg = 'Multiple equal keys found in unpickled KeyData file'
         if msg:
             raise AssertionError(
-                "%s. Verify the __eq__ and __hash__ functions of your "
-                "Ops. The file is: %s. The key is: %s" % (msg, key_pkl, key))
+                f"{msg}. Verify the __eq__ and __hash__ functions of your Ops. The file is: {key_pkl}. The key is: {key}"
+            )
         # Also verify that there exists no other loaded key that would be equal
         # to this key. In order to speed things up, we only compare to keys
         # with the same version part and config md5, since we can assume this
@@ -1334,7 +1323,7 @@ class ModuleCache(object):
         with compilelock.lock_ctx():
             for base_dir in ('cuda_ndarray', 'cutils_ext', 'lazylinker_ext',
                              'scan_perform'):
-                to_delete = os.path.join(self.dirname, base_dir + '.delete.me')
+                to_delete = os.path.join(self.dirname, f'{base_dir}.delete.me')
                 if os.path.isdir(to_delete):
                     try:
                         shutil.rmtree(to_delete)
@@ -1429,8 +1418,7 @@ class ModuleCache(object):
                     # If it don't exist, use any file in the directory.
                     if path is None:
                         path = os.path.join(self.dirname, filename)
-                        files = os.listdir(path)
-                        if files:
+                        if files := os.listdir(path):
                             path = os.path.join(path, files[0])
                         else:
                             # If the directory is empty skip it.
@@ -1481,7 +1469,7 @@ def _rmtree(parent, ignore_nocleanup=False, msg='', level=logging.DEBUG,
         if ignore_nocleanup or not config.nocleanup:
             log_msg = 'Deleting'
             if msg:
-                log_msg += ' (%s)' % msg
+                log_msg += f' ({msg})'
             _logger.log(level, '%s: %s', log_msg, parent)
             shutil.rmtree(parent)
     except Exception as e:
@@ -1530,10 +1518,7 @@ def get_lib_extension():
     Return the platform-dependent extension for compiled modules.
 
     """
-    if sys.platform in ['win32', 'cygwin']:
-        return 'pyd'
-    else:
-        return 'so'
+    return 'pyd' if sys.platform in ['win32', 'cygwin'] else 'so'
 
 
 def get_gcc_shared_library_arg():
@@ -1541,10 +1526,7 @@ def get_gcc_shared_library_arg():
     Return the platform-dependent GCC argument for shared libraries.
 
     """
-    if sys.platform == 'darwin':
-        return '-dynamiclib'
-    else:
-        return '-shared'
+    return '-dynamiclib' if sys.platform == 'darwin' else '-shared'
 
 
 def std_include_dirs():
@@ -1603,8 +1585,10 @@ def std_lib_dirs_and_libs():
                              r'EGG-INFO\mingw\usr\x86_64-w64-mingw32\lib')]
             for f, lib in [('libmsvcr90.a',
                             'mingw 4.5.2 or 4.8.1-2 (newer could work)')]:
-                if not any([os.path.exists(os.path.join(tmp_libdir, f))
-                            for tmp_libdir in libdirs]):
+                if not any(
+                    os.path.exists(os.path.join(tmp_libdir, f))
+                    for tmp_libdir in libdirs
+                ):
                     print(("Your Python version is from Canopy. " +
                            "You need to install the package '" + lib +
                            "' from Canopy package manager."
@@ -1612,8 +1596,6 @@ def std_lib_dirs_and_libs():
             python_lib_dirs.insert(0, libdir)
         std_lib_dirs_and_libs.data = [libname], python_lib_dirs
 
-    # Suppress -lpython2.x on OS X since the `-undefined dynamic_lookup`
-    # makes it unnecessary.
     elif sys.platform == 'darwin':
         std_lib_dirs_and_libs.data = [], []
     else:
@@ -1744,8 +1726,8 @@ class Compiler(object):
                         os.remove(path)
                     if os.path.exists(exe_path):
                         os.remove(exe_path)
-                    if os.path.exists(exe_path + ".exe"):
-                        os.remove(exe_path + ".exe")
+                    if os.path.exists(f"{exe_path}.exe"):
+                        os.remove(f"{exe_path}.exe")
         except OSError as e:
             if err is None:
                 err = str(e)
@@ -1755,7 +1737,7 @@ class Compiler(object):
 
         if not try_run and not output:
             return compilation_ok
-        elif not try_run and output:
+        elif not try_run:
             return (compilation_ok, out, err)
         elif not output:
             return (compilation_ok, run_ok)
@@ -1796,7 +1778,7 @@ class GCC_compiler(Compiler):
 
     @staticmethod
     def version_str():
-        return theano.config.cxx + " " + gcc_version_str
+        return f"{theano.config.cxx} {gcc_version_str}"
 
     @staticmethod
     def compile_args():
@@ -1875,7 +1857,7 @@ class GCC_compiler(Compiler):
 
             # The '-' at the end is needed. Otherwise, g++ do not output
             # enough information.
-            native_lines = get_lines("%s -march=native -E -v -" % theano.config.cxx)
+            native_lines = get_lines(f"{theano.config.cxx} -march=native -E -v -")
             if native_lines is None:
                 _logger.info("Call to 'g++ -march=native' failed,"
                              "not setting -march flag")
@@ -1889,8 +1871,9 @@ class GCC_compiler(Compiler):
                 if len(native_lines) == 0:
                     # That means we did not select the right lines, so
                     # we have to report all the lines instead
-                    reported_lines = get_lines("%s -march=native -E -v -" % theano.config.cxx,
-                                               parse=False)
+                    reported_lines = get_lines(
+                        f"{theano.config.cxx} -march=native -E -v -", parse=False
+                    )
                 else:
                     reported_lines = native_lines
                 _logger.warn(
@@ -1902,7 +1885,7 @@ class GCC_compiler(Compiler):
                     " problem:\n %s",
                     reported_lines)
             else:
-                default_lines = get_lines("%s -E -v -" % theano.config.cxx)
+                default_lines = get_lines(f"{theano.config.cxx} -E -v -")
                 _logger.info("g++ default lines: %s", default_lines)
                 if len(default_lines) < 1:
                     _logger.warn(
@@ -1913,7 +1896,8 @@ class GCC_compiler(Compiler):
                         " functions. Please submit the following lines to"
                         " Theano's mailing list so that we can fix this"
                         " problem:\n %s",
-                        get_lines("%s -E -v -" % theano.config.cxx, parse=False))
+                        get_lines(f"{theano.config.cxx} -E -v -", parse=False),
+                    )
                 else:
                     # Some options are actually given as "-option value",
                     # we want to treat them as only one token when comparing
@@ -1956,7 +1940,7 @@ class GCC_compiler(Compiler):
                                     opt = p.split()
                                     if len(opt) == 2:
                                         opt_name, opt_val = opt
-                                        new_flags[i] = '-march=%s' % opt_val
+                                        new_flags[i] = f'-march={opt_val}'
 
                             # Some versions of GCC report the native arch
                             # as "corei7-avx", but it generates illegal
@@ -2013,7 +1997,7 @@ class GCC_compiler(Compiler):
 
         # numpy 1.7 deprecated the following macro but the new one didn't
         # existed in the past
-        if bool(numpy_ver < [1, 7]):
+        if numpy_ver < [1, 7]:
             cxxflags.append("-D NPY_ARRAY_ENSUREARRAY=NPY_ENSUREARRAY")
             cxxflags.append("-D NPY_ARRAY_ENSURECOPY=NPY_ENSURECOPY")
             cxxflags.append("-D NPY_ARRAY_ALIGNED=NPY_ALIGNED")
@@ -2031,8 +2015,9 @@ class GCC_compiler(Compiler):
         # ARM (32-bit and 64-bit) architectures in order to make
         # Theano compatible with the Raspberry Pi, Raspberry Pi 2, or
         # other systems with ARM processors.
-        if (not any(['arm' in flag for flag in cxxflags]) and
-                not any(arch in platform.machine() for arch in ['arm', 'aarch'])):
+        if all('arm' not in flag for flag in cxxflags) and all(
+            arch not in platform.machine() for arch in ['arm', 'aarch']
+        ):
             n_bits = local_bitwidth()
             cxxflags.append('-m%d' % n_bits)
             _logger.debug("Compiling for %s bit architecture", n_bits)
@@ -2123,9 +2108,9 @@ class GCC_compiler(Compiler):
         include_dirs = [d for d in include_dirs if d]
         lib_dirs = [d for d in lib_dirs if d]
 
-        include_dirs = include_dirs + std_include_dirs()
+        include_dirs += std_include_dirs()
         libs = libs + std_libs()
-        lib_dirs = lib_dirs + std_lib_dirs()
+        lib_dirs += std_lib_dirs()
 
         cppfilename = os.path.join(location, 'mod.cpp')
         with open(cppfilename, 'w') as cppfile:
@@ -2137,9 +2122,7 @@ class GCC_compiler(Compiler):
             if not src_code.endswith('\n'):
                 cppfile.write('\n')
 
-        lib_filename = os.path.join(
-            location,
-            '%s.%s' % (module_name, get_lib_extension()))
+        lib_filename = os.path.join(location, f'{module_name}.{get_lib_extension()}')
 
         _logger.debug('Generating shared lib %s', lib_filename)
         cmd = [theano.config.cxx, get_gcc_shared_library_arg(), '-g']
@@ -2148,7 +2131,7 @@ class GCC_compiler(Compiler):
             cmd.extend(p for p in preargs if not p.startswith('-O'))
         else:
             cmd.extend(preargs)
-        cmd.extend('-I%s' % idir for idir in include_dirs)
+        cmd.extend(f'-I{idir}' for idir in include_dirs)
         if hide_symbols and sys.platform != 'win32':
             # This has been available since gcc 4.0 so we suppose it
             # is always available. We pass it here since it
@@ -2159,8 +2142,8 @@ class GCC_compiler(Compiler):
             cmd.append('-fvisibility=hidden')
         cmd.extend(['-o', lib_filename])
         cmd.append(cppfilename)
-        cmd.extend(['-L%s' % ldir for ldir in lib_dirs])
-        cmd.extend(['-l%s' % l for l in libs])
+        cmd.extend([f'-L{ldir}' for ldir in lib_dirs])
+        cmd.extend([f'-l{l}' for l in libs])
         # print >> sys.stderr, 'COMPILING W CMD', cmd
         _logger.debug('Running cmd: %s', ' '.join(cmd))
 

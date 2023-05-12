@@ -30,9 +30,8 @@ def simple_extract_stack(f=None, limit=None, skips=[]):
             raise ZeroDivisionError
         except ZeroDivisionError:
             f = sys.exc_info()[2].tb_frame.f_back
-    if limit is None:
-        if hasattr(sys, 'tracebacklimit'):
-            limit = sys.tracebacklimit
+    if limit is None and hasattr(sys, 'tracebacklimit'):
+        limit = sys.tracebacklimit
     trace = []
     n = 0
     while f is not None and (limit is None or n < limit):
@@ -42,27 +41,16 @@ def simple_extract_stack(f=None, limit=None, skips=[]):
         name = co.co_name
 #        linecache.checkcache(filename)
         line = linecache.getline(filename, lineno, f.f_globals)
-        if line:
-            line = line.strip()
-        else:
-            line = None
+        line = line.strip() if line else None
         f = f.f_back
 
         # Just skip inner level
-        if len(trace) == 0:
-            rm = False
-            for p in skips:
-                # Julian: I added the 'tests' exception together with
-                # Arnaud.  Otherwise, we'd lose the stack trace during
-                # in our test cases (e.g. in test_opt.py). We're not
-                # sure this is the right way to do it though.
-                if p in filename and 'tests' not in filename:
-                    rm = True
-                    break
+        if not trace:
+            rm = any(p in filename and 'tests' not in filename for p in skips)
             if rm:
                 continue
         trace.append((filename, lineno, name, line))
-        n = n + 1
+        n += 1
     trace.reverse()
     return trace
 
@@ -99,12 +87,7 @@ def add_tag_trace(thing, user_line=None):
              "theano/scan_module/", "theano\\scan_module\\",
              "theano/sparse/", "theano\\sparse\\",
              "theano/typed_list/", "theano\\typed_list\\"]
-    tr = simple_extract_stack(limit=user_line, skips=skips)
-    # Different python version use different sementic for
-    # limit. python 2.7 include the call to extrack_stack. The -1 get
-    # rid of it.
-
-    if tr:
+    if tr := simple_extract_stack(limit=user_line, skips=skips):
         thing.tag.trace = [tr]
     else:
         thing.tag.trace = tr
@@ -137,7 +120,7 @@ class object2(object):
         def __hash__(self):
             # this fixes silent-error-prone new-style class behavior
             if hasattr(self, '__eq__') or hasattr(self, '__cmp__'):
-                raise TypeError("unhashable object: %s" % self)
+                raise TypeError(f"unhashable object: {self}")
             return id(self)
 
     def __ne__(self, other):
@@ -153,15 +136,15 @@ class scratchpad:
         return self
 
     def __str__(self):
-        return "scratchpad" + str(self.__dict__)
+        return f"scratchpad{str(self.__dict__)}"
 
     def __repr__(self):
-        return "scratchpad" + str(self.__dict__)
+        return f"scratchpad{str(self.__dict__)}"
 
     def info(self):
         print("<theano.gof.utils.scratchpad instance at %i>" % id(self))
         for k, v in iteritems(self.__dict__):
-            print("  %s: %s" % (k, v))
+            print(f"  {k}: {v}")
 
 
 class D:
@@ -209,10 +192,10 @@ def deprecated(filename, msg=''):
 
         def g(*args, **kwargs):
             if printme[0]:
-                print('WARNING: %s.%s deprecated. %s' %
-                      (filename, f.__name__, msg))
+                print(f'WARNING: {filename}.{f.__name__} deprecated. {msg}')
                 printme[0] = False
             return f(*args, **kwargs)
+
         return g
 
     return _deprecated
@@ -249,17 +232,11 @@ def difference(seq1, seq2):
 
 
 def to_return_values(values):
-    if len(values) == 1:
-        return values[0]
-    else:
-        return values
+    return values[0] if len(values) == 1 else values
 
 
 def from_return_values(values):
-    if isinstance(values, (list, tuple)):
-        return values
-    else:
-        return [values]
+    return values if isinstance(values, (list, tuple)) else [values]
 
 
 def toposort(prereqs_d):
@@ -283,7 +260,7 @@ def toposort(prereqs_d):
     for x, prereqs in iteritems(prereqs_d):
         for prereq in prereqs:
             postreqs_d.setdefault(prereq, set()).add(x)
-    next = set([k for k in prereqs_d if not prereqs_d[k]])
+    next = {k for k in prereqs_d if not prereqs_d[k]}
     while next:
         bases = next
         next = set()
@@ -316,10 +293,10 @@ class Keyword:
         return self.nonzero
 
     def __str__(self):
-        return "<%s>" % self.name
+        return f"<{self.name}>"
 
     def __repr__(self):
-        return "<%s>" % self.name
+        return f"<{self.name}>"
 
 ABORT = Keyword("ABORT", False)
 RETRY = Keyword("RETRY", False)
@@ -348,10 +325,7 @@ def comm_guard(type1, type2):
                 return old_f(arg1, arg2, *rest)
 
             variable = f(arg1, arg2, *rest)
-            if variable is FALL_THROUGH:
-                return old_f(arg1, arg2, *rest)
-            else:
-                return variable
+            return old_f(arg1, arg2, *rest) if variable is FALL_THROUGH else variable
 
         new_f.__name__ = f.__name__
 
@@ -379,10 +353,7 @@ def type_guard(type1):
         def new_f(arg1, *rest):
             if (type1 is ANY_TYPE or isinstance(arg1, type1)):
                 variable = f(arg1, *rest)
-                if variable is FALL_THROUGH:
-                    return old_f(arg1, *rest)
-                else:
-                    return variable
+                return old_f(arg1, *rest) if variable is FALL_THROUGH else variable
             else:
                 return old_f(arg1, *rest)
 
@@ -409,13 +380,12 @@ def flatten(a):
     Recursively flatten tuple, list and set in a list.
 
     """
-    if isinstance(a, (tuple, list, set)):
-        l = []
-        for item in a:
-            l.extend(flatten(item))
-        return l
-    else:
+    if not isinstance(a, (tuple, list, set)):
         return [a]
+    l = []
+    for item in a:
+        l.extend(flatten(item))
+    return l
 
 
 def unique(x):
@@ -476,7 +446,7 @@ if PY3:
             msg = msg.encode()
         # Python 3 does not like module names that start with
         # a digit.
-        return 'm' + hashlib.md5(msg).hexdigest()
+        return f'm{hashlib.md5(msg).hexdigest()}'
 
 else:
     import hashlib
@@ -513,18 +483,11 @@ def hash_from_dict(d):
     so the key don't need to be sortable.
 
     """
-    if isinstance(d, OrderedDict):
-        items = list(iteritems(d))
-    else:
-        items = list(d.items())
-        items.sort()
+    items = list(iteritems(d)) if isinstance(d, OrderedDict) else sorted(d.items())
     first_part = [k for k, v in items]
     second_part = []
     for k, v in items:
         assert isinstance(k, (str, int, float))
-        if isinstance(v, (tuple, list)):
-            second_part += [tuple(v)]
-        else:
-            second_part += [v]
+        second_part += [tuple(v)] if isinstance(v, (tuple, list)) else [v]
     tuple_items = tuple(first_part + second_part + [d.__class__])
     return hash(tuple_items)

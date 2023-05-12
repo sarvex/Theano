@@ -26,10 +26,10 @@ class NullType(Type):
     def filter_variable(self, other, allow_convert=True):
         raise ValueError("No values may be assigned to a NullType")
 
-    def may_share_memory(a, b):
+    def may_share_memory(self, b):
         return False
 
-    def values_eq(a, b, force_same_dtype=True):
+    def values_eq(self, b, force_same_dtype=True):
         raise ValueError("NullType has no values to compare")
 
     def __eq__(self, other):

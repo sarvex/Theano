@@ -73,9 +73,7 @@ def make_dependence_cmp():
         """
         if depends((a, b)):
             return 1
-        if depends((b, a)):
-            return -1
-        return 0
+        return -1 if depends((b, a)) else 0
 
     return dependence
 
@@ -134,9 +132,8 @@ def _toposort(edges):
 
     """
     incoming_edges = reverse_dict(edges)
-    incoming_edges = dict((k, set(val))
-                          for k, val in iteritems(incoming_edges))
-    S = set((v for v in edges if v not in incoming_edges))
+    incoming_edges = {k: set(val) for k, val in iteritems(incoming_edges)}
+    S = {v for v in edges if v not in incoming_edges}
     L = []
 
     while S:
@@ -185,8 +182,8 @@ def posort(l, *cmps):
     [0, 8, 2, 4, 6, 1, 3, 5, 7, 9, 16, 18, 10, 12, 14, 17, 19, 11, 13, 15]
 
     """
-    comes_before = dict((a, set()) for a in l)
-    comes_after = dict((a, set()) for a in l)
+    comes_before = {a: set() for a in l}
+    comes_after = {a: set() for a in l}
 
     def add_links(a, b):  # b depends on a
         comes_after[a].add(b)
@@ -205,15 +202,17 @@ def posort(l, *cmps):
         """
         for a in l:
             for b in l:
-                assert not(b in comes_after[a] and a in comes_after[b])
+                assert b not in comes_after[a] or a not in comes_after[b]
 
     for cmp_fn in cmps:
         for a in l:
             for b in l:
-                if cmp_fn(a, b) < 0:  # a wants to come before b
-                    # if this wouldn't cause a cycle and isn't already known
-                    if b not in comes_before[a] and b not in comes_after[a]:
-                        add_links(a, b)
+                if (
+                    cmp_fn(a, b) < 0
+                    and b not in comes_before[a]
+                    and b not in comes_after[a]
+                ):
+                    add_links(a, b)
     # check() # debug code
 
     return _toposort(comes_after)

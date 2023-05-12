@@ -33,18 +33,14 @@ class BROKEN_ON_PURPOSE_Add(gof.Op):
         assert a.type.dtype == 'float64'
         assert a.type.dtype == b.type.dtype
         assert a.type.ndim == 1
-        r = gof.Apply(self, [a, b], [a.type()])
-        return r
+        return gof.Apply(self, [a, b], [a.type()])
 
     def perform(self, node, inp, out_):
         a, b = inp
         out, = out_
         z = a + b
         # ERROR TO ADD THIS CRAPPY OFFSET
-        if self.py_offset:
-            out[0] = z + 0.5
-        else:
-            out[0] = z
+        out[0] = z + 0.5 if self.py_offset else z
 
     def c_code_cache_version(self):
         return (1,)
@@ -109,8 +105,7 @@ class WeirdBrokenOp(gof.Op):
 
     def make_node(self, a):
         a_ = theano.tensor.as_tensor_variable(a)
-        r = gof.Apply(self, [a_], [a_.type()])
-        return r
+        return gof.Apply(self, [a_], [a_.type()])
 
     def dontuse_perform(self, node, inp, out_):
         a, = inp
@@ -158,13 +153,9 @@ class WeirdBrokenOp(gof.Op):
             {
         """
 
-        if self.behaviour == 'times2':
+        if self.behaviour in ['times2', 'times2_inplace']:
             behaviour = "     Dz[m * Sz] = 2 * Da[m * Sa]; "
             #out[0] = a * 2
-        elif self.behaviour == 'times2_inplace':
-            #out[0] = a
-            #out[0] *= 2
-            behaviour = "     Dz[m * Sz] = 2 * Da[m * Sa]; "
         elif self.behaviour == 'times1':
             #out[0] = a * 1
             behaviour = "     Dz[m * Sz] = Da[m * Sa]; "
@@ -178,9 +169,9 @@ class WeirdBrokenOp(gof.Op):
             }
         """
 
-        total = ((z_code + prep_vars + behaviour + prep_vars2)
-                % dict(locals(), **sub))
-        return total
+        return (z_code + prep_vars + behaviour + prep_vars2) % dict(
+            locals(), **sub
+        )
 
 wb2i = WeirdBrokenOp('times2_inplace')
 wb2 = WeirdBrokenOp('times2')
@@ -218,9 +209,8 @@ def test_badthunkoutput():
 def test_badoptimization():
     @gof.local_optimizer([theano.tensor.add])
     def insert_broken_add(node):
-        if node.op == theano.tensor.add:
-            return [off_by_half(*node.inputs)]
-        return False
+        return [off_by_half(*node.inputs)] if node.op == theano.tensor.add else False
+
     edb = gof.EquilibriumDB()
     edb.register('insert_broken_add', insert_broken_add, 'all')
     opt = edb.query('+all')
@@ -605,8 +595,7 @@ class BrokenCImplementationAdd(gof.Op):
         assert a.type.dtype == 'float32'
         assert a.type.dtype == b.type.dtype
         assert a.type.ndim == 2
-        r = gof.Apply(self, [a, b], [a.type()])
-        return r
+        return gof.Apply(self, [a, b], [a.type()])
 
     def perform(self, node, inp, out_):
         # print 'executing python perform'

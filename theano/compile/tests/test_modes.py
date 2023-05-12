@@ -16,11 +16,7 @@ class T_bunch_of_modes(unittest.TestCase):
         # to check that all the current modes can still be used.
         linker_classes_involved = []
 
-        predef_modes = ['FAST_COMPILE', 'FAST_RUN', 'DEBUG_MODE']
-        # Use a new instance of ProfileMode instead of 'ProfileMode' to
-        # avoid printing a profile mode summary in nose output
-        predef_modes.append(ProfileMode())
-
+        predef_modes = ['FAST_COMPILE', 'FAST_RUN', 'DEBUG_MODE', ProfileMode()]
         # Linkers to use with regular Mode
         if theano.config.cxx:
             linkers = ['py', 'c|py', 'c|py_nogc', 'vm', 'vm_nogc',

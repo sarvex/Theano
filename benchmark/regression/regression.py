@@ -104,12 +104,11 @@ def test_module_advanced_example():
                        mode=profmode)
 
     for i in xrange(1000):
-       xe, gw, gb, ga = model.update(data_x, data_y)
-       if i % 100 == 0:
-           print(i, xe)
-           pass
-       #for inputs, targets in my_training_set():
-           #print "cost:", model.update(inputs, targets)
+        xe, gw, gb, ga = model.update(data_x, data_y)
+        if i % 100 == 0:
+            print(i, xe)
+           #for inputs, targets in my_training_set():
+               #print "cost:", model.update(inputs, targets)
 
     print("final weights:", model.w)
     print("final biases:", model.b)
